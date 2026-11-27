@@ -1,4 +1,4 @@
-import{a as _e,u as ke,r as l,j as t}from"./index-Cm7YzFF3.js";import{C as je}from"./CustomerHistoryModal-DGwo__IF.js";const g={REMINDER:`Assalam-o-Alaikum {{customer_name}}, aapka {{store_name}} cart checkout par wapas aapka intezar kar raha hai. Kya aapko order complete karne mein koi dushwari pesh aa rahi hai?
+import{a as _e,u as ke,r as l,j as t}from"./index-DvFe4Fwm.js";import{C as je}from"./CustomerHistoryModal-B7SLF-py.js";const g={REMINDER:`Assalam-o-Alaikum {{customer_name}}, aapka {{store_name}} cart checkout par wapas aapka intezar kar raha hai. Kya aapko order complete karne mein koi dushwari pesh aa rahi hai?
 
 Complete link: {{checkout_url}}`,DISCOUNT:`Assalam-o-Alaikum {{customer_name}}! Aap ke {{store_name}} cart par Special Discount activate kar diya gaya hai.
 

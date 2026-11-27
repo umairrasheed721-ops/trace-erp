@@ -24,11 +24,6 @@ export default function StoreDetailWorkspace({
   const [testResults, setTestResults] = useState({})
   const [testingCourier, setTestingCourier] = useState('')
 
-  // Meta & WhatsApp forms
-  const [metaForm, setMetaForm] = useState({ ad_account_id: '', access_token: '' })
-  const [metaSaving, setMetaSaving] = useState(false)
-  const [waTokenInput, setWaTokenInput] = useState('')
-
   // Webhooks & Re-auth
   const [registeringWh, setRegisteringWh] = useState(false)
   const [deletingWhId, setDeletingWhId] = useState(null)
@@ -67,11 +62,7 @@ export default function StoreDetailWorkspace({
       postex_track_url: store.postex_track_url || '',
       instaworld_track_url: store.instaworld_track_url || '',
       gas_proxy_url: store.gas_proxy_url || '',
-      wa_phone_number_id: store.wa_phone_number_id || '',
-      wa_webhook_verify_token: store.wa_webhook_verify_token || '',
     })
-    setMetaForm({ ad_account_id: store.meta_ad_account_id || '', access_token: '' })
-    setWaTokenInput('')
     setReauthForm({ client_id: store.shopify_client_id || '', client_secret: '' })
     setSyncStartDate(store.sync_start_date || '2024-01-01')
     setDirty(false)
@@ -79,7 +70,7 @@ export default function StoreDetailWorkspace({
     setShowReauthCreds(false)
     setDirectTokenInput('')
     setSniperLogs([])
-  }, [store.id, store.store_name, store.postex_token, store.instaworld_key, store.leopards_token, store.tcs_token, store.meta_ad_account_id])
+  }, [store.id, store.store_name, store.postex_token, store.instaworld_key, store.leopards_token, store.tcs_token])
 
   // Fetch lightweight stats + live health when switching selected store
   useEffect(() => {
@@ -128,7 +119,6 @@ export default function StoreDetailWorkspace({
     setSaving(true)
     try {
       const payload = { ...form, ...extra }
-      if (waTokenInput.trim()) payload.wa_access_token = waTokenInput.trim()
       const res = await fetch(`/api/stores/${store.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -137,7 +127,6 @@ export default function StoreDetailWorkspace({
       if (res.ok) {
         addToast('✅ Store configuration saved!', 'success')
         setDirty(false)
-        setWaTokenInput('')
         await onRefreshFleet(true)
       } else {
         const d = await res.json().catch(() => ({}))
@@ -147,32 +136,6 @@ export default function StoreDetailWorkspace({
       addToast('Network error while saving', 'error')
     }
     setSaving(false)
-  }
-
-  const handleSaveMeta = async (clearToken = false) => {
-    setMetaSaving(true)
-    try {
-      const res = await fetch(`/api/stores/${store.id}/meta-config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ad_account_id: metaForm.ad_account_id,
-          access_token: metaForm.access_token,
-          clear_token: clearToken
-        })
-      })
-      const data = await res.json()
-      if (res.ok && data.success) {
-        addToast(clearToken ? 'Meta token cleared' : '✅ Meta Ads config saved!', 'success')
-        setMetaForm(p => ({ ...p, access_token: '' }))
-        await onRefreshFleet(true)
-      } else {
-        addToast(data.error || 'Failed to save Meta config', 'error')
-      }
-    } catch {
-      addToast('Network error', 'error')
-    }
-    setMetaSaving(false)
   }
 
   const handleTestCourier = async (courier) => {
@@ -373,16 +336,15 @@ export default function StoreDetailWorkspace({
     { label: 'Leopards', ok: !!store.leopards_token, targetTab: 'couriers' },
     { label: 'TCS', ok: !!store.tcs_token, targetTab: 'couriers' },
     { label: 'Google Maps', ok: !!store.google_maps_key, targetTab: 'couriers' },
-    { label: 'Meta Ads', ok: !!(store.meta_ad_account_id && store.has_meta_token), targetTab: 'integrations' },
-    { label: 'WhatsApp API', ok: !!(store.wa_phone_number_id && store.has_wa_token), targetTab: 'integrations' },
-  ], [store])
+    { label: 'Shopify Webhooks', ok: !!(health?.webhooks?.ok && health.webhooks.missing_topics.length === 0), targetTab: 'webhooks' },
+  ], [store, health])
 
   const TABS = [
     { id: 'overview', label: '📊 Overview & Health' },
     { id: 'couriers', label: '🚚 Couriers & Keys', badge: dirty ? '●' : null },
     { id: 'webhooks', label: '⚡ Webhooks & OAuth', badge: health?.webhooks?.has_inventory_conflict ? '!' : (health?.webhooks ? `${health.webhooks.active_expected}/${health.webhooks.total_expected}` : null) },
     { id: 'sync', label: '🔄 Sync & Sniper', badge: isSyncing ? 'Live' : null },
-    { id: 'integrations', label: '🧩 Integrations & Settings' },
+    { id: 'settings', label: '⚙️ Store Settings' },
   ]
 
   const applySyncDatePreset = (days) => {
@@ -472,7 +434,7 @@ export default function StoreDetailWorkspace({
 
         {/* Header Quick Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {store.is_connected && !isActiveWorkspace && (
+          {Boolean(store.is_connected) && !isActiveWorkspace && (
             <button
               type="button"
               onClick={onSetActiveWorkspace}
@@ -1239,91 +1201,9 @@ export default function StoreDetailWorkspace({
           </div>
         )}
 
-        {/* ═══ TAB 5: INTEGRATIONS & SETTINGS ═══ */}
-        {tab === 'integrations' && (
+        {/* ═══ TAB 5: STORE SETTINGS & DANGER ZONE ═══ */}
+        {tab === 'settings' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            {/* Meta / Facebook Ads */}
-            <ConfigCard
-              icon="📣"
-              title="Meta / Facebook Ads Integration (PNL Auto Ad Spend)"
-              subtitle="Connect store's Meta Ad Account so PNL Reports automatically pull daily ad spend"
-              rightAction={
-                store.has_meta_token
-                  ? <span style={{ ...pillStyle, background: 'rgba(16,185,129,0.12)', color: '#059669' }}>✓ Token Connected</span>
-                  : <span style={{ ...pillStyle, background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>Not Configured</span>
-              }
-            >
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 12, marginBottom: 12 }}>
-                <div>
-                  <label style={labelStyle}>Meta Ad Account ID</label>
-                  <input
-                    className="form-input font-mono"
-                    placeholder="act_123456789012345"
-                    value={metaForm.ad_account_id}
-                    onChange={e => setMetaForm(p => ({ ...p, ad_account_id: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Meta System User Access Token {store.has_meta_token ? '(Leave blank to keep existing)' : ''}</label>
-                  <input
-                    className="form-input font-mono"
-                    type="password"
-                    placeholder={store.has_meta_token ? '•••••••••••••••• (Saved — paste new to replace)' : 'EAAG...'}
-                    value={metaForm.access_token}
-                    onChange={e => setMetaForm(p => ({ ...p, access_token: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                {store.has_meta_token && (
-                  <button type="button" disabled={metaSaving} onClick={() => handleSaveMeta(true)} style={secondaryBtnStyle}>
-                    Clear Token
-                  </button>
-                )}
-                <button type="button" disabled={metaSaving} onClick={() => handleSaveMeta(false)} style={primaryBtnStyle}>
-                  {metaSaving ? 'Saving...' : '💾 Save Meta Ads Config'}
-                </button>
-              </div>
-            </ConfigCard>
-
-            {/* WhatsApp Cloud API */}
-            <ConfigCard
-              icon="💬"
-              title="WhatsApp Business Cloud API (Optional Per-Store)"
-              subtitle="Store-specific Meta WhatsApp Cloud credentials (optional if using shared bot)"
-              rightAction={
-                store.has_wa_token
-                  ? <span style={{ ...pillStyle, background: 'rgba(16,185,129,0.12)', color: '#059669' }}>✓ Token Saved</span>
-                  : <span style={{ ...pillStyle, background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>Optional</span>
-              }
-            >
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 12 }}>
-                <div>
-                  <label style={labelStyle}>Phone Number ID</label>
-                  <input className="form-input font-mono" value={form.wa_phone_number_id || ''} onChange={updateField('wa_phone_number_id')} placeholder="1029384756..." />
-                </div>
-                <div>
-                  <label style={labelStyle}>Webhook Verify Token</label>
-                  <input className="form-input font-mono" value={form.wa_webhook_verify_token || ''} onChange={updateField('wa_webhook_verify_token')} placeholder="trace_wa_verify" />
-                </div>
-                <div>
-                  <label style={labelStyle}>Access Token {store.has_wa_token ? '(Saved)' : ''}</label>
-                  <input
-                    className="form-input font-mono"
-                    type="password"
-                    value={waTokenInput}
-                    onChange={e => { setWaTokenInput(e.target.value); setDirty(true) }}
-                    placeholder={store.has_wa_token ? '•••••••• (paste to replace)' : 'EAAG...'}
-                  />
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button type="button" disabled={saving} onClick={() => handleSaveSettings()} style={primaryBtnStyle}>
-                  💾 Save WhatsApp &amp; General Settings
-                </button>
-              </div>
-            </ConfigCard>
-
             {/* General Store Settings */}
             <ConfigCard icon="⚙️" title="Store Identity &amp; Sync Window" subtitle="Display name and order import cutoff date">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 12 }}>
@@ -1338,7 +1218,7 @@ export default function StoreDetailWorkspace({
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                  Created: <strong>{store.created_at ? new Date(store.created_at).toLocaleDateString() : '—'}</strong>
+                  Store ID: <strong>#{store.id}</strong> · Created: <strong>{store.created_at ? new Date(store.created_at).toLocaleDateString() : '—'}</strong>
                 </span>
                 <button type="button" disabled={saving} onClick={() => handleSaveSettings()} style={primaryBtnStyle}>
                   💾 Save Store Identity

@@ -80,9 +80,9 @@ export default function Connect() {
   const fleetStats = useMemo(() => {
     const totalOrders = connectedStores.reduce((sum, s) => sum + (Number(s.orders_count) || 0), 0)
     const courierReady = connectedStores.filter(s => s.postex_token || s.instaworld_key).length
-    const metaReady = connectedStores.filter(s => s.meta_ad_account_id && s.has_meta_token).length
+    const gmapsReady = connectedStores.filter(s => s.google_maps_key).length
     const syncingCount = allStores.filter(s => s.sync_status === 'syncing').length
-    return { totalOrders, courierReady, metaReady, syncingCount }
+    return { totalOrders, courierReady, gmapsReady, syncingCount }
   }, [connectedStores, allStores])
 
   const handleConfirmDelete = async () => {
@@ -123,7 +123,7 @@ export default function Connect() {
               Store Hub &amp; Integrations
             </h2>
             <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Manage Shopify connections, live API health, webhooks, couriers, Meta Ads &amp; sync pipelines
+              Manage Shopify connections, live API health, webhooks, couriers &amp; sync pipelines
             </p>
           </div>
         </div>
@@ -188,7 +188,7 @@ export default function Connect() {
           icon="🚚"
           label="Courier Keys Ready"
           value={`${fleetStats.courierReady} / ${connectedStores.length}`}
-          sub={`Meta Ads linked: ${fleetStats.metaReady}/${connectedStores.length}`}
+          sub={`PostEx · Instaworld · Maps: ${fleetStats.gmapsReady}/${connectedStores.length}`}
           accent="#f59e0b"
         />
         <FleetKpi
@@ -325,7 +325,8 @@ export default function Connect() {
                         {isFrozen && <span style={{ ...railChipStyle, background: 'rgba(59,130,246,0.14)', color: '#2563eb' }}>❄️ Frozen</span>}
                         {st.postex_token && <span style={railChipStyle}>PostEx</span>}
                         {st.instaworld_key && <span style={railChipStyle}>Insta</span>}
-                        {st.meta_ad_account_id && st.has_meta_token && <span style={railChipStyle}>Meta</span>}
+                        {st.leopards_token && <span style={railChipStyle}>LCS</span>}
+                        {st.tcs_token && <span style={railChipStyle}>TCS</span>}
                       </div>
                     </button>
                   )
