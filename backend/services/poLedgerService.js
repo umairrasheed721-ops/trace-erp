@@ -763,7 +763,9 @@ function listPurchaseOrders(storeId) {
     return {
       ...p,
       shopify_sync_status: shopifySyncStatus,
-      remaining_payable: Math.max(0, Math.round(((Number(p.billed_cost) || 0) - (Number(p.paid_amount) || 0)) * 100) / 100),
+      remaining_payable: (!p.is_baseline && p.supplier_id)
+        ? Math.max(0, Math.round(((Number(p.billed_cost) || 0) - (Number(p.paid_amount) || 0)) * 100) / 100)
+        : 0,
     };
   });
 }
@@ -1892,8 +1894,8 @@ async function recordSupplierReturn(storeId, payload = {}, createdBy = 'Admin') 
   db.exec('BEGIN');
   try {
     if (pmc) {
-      db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) - ?, updated_at = datetime('now') WHERE id = ?")
-        .run(qty, pmc.id);
+      db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) - ?, on_hand_qty = COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) - ?, updated_at = datetime('now') WHERE id = ?")
+        .run(qty, qty, pmc.id);
       consumeFifoBatches(sid, pmc.id, qty);
       const invInfo = db.prepare(`
         INSERT INTO inventory_ledger
@@ -2370,6 +2372,15 @@ function allocateOrderFifoOnDispatch(orderId, actor = 'System') {
         totalPkg += (parseFloat(pmc.packaging_cost) || 0) * qty;
       }
 
+      // Keep On-Hand & Committed in lockstep when an order leaves shelf on courier dispatch
+      db.prepare(`
+        UPDATE product_master_costs
+        SET committed_qty = MAX(0, COALESCE(committed_qty, 0) - ?),
+            on_hand_qty = MAX(0, COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) - ?),
+            updated_at = datetime('now')
+        WHERE id = ? AND store_id = ?
+      `).run(qty, qty, pmc.id, sid);
+
       insLog.run(
         sid, pmc.id, pmc.sku || item.sku || '', pmc.parent_title, pmc.variant_title || '',
         -qty, lineAvgUnit, String(oid), refLabel,
@@ -2426,6 +2437,12 @@ function reverseOrderFifoOnCancel(orderId, actor = 'System') {
     `);
     for (const r of rows) {
       restoreFifoBatch(sid, r.product_cost_id, r.net_qty);
+      db.prepare(`
+        UPDATE product_master_costs
+        SET on_hand_qty = COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) + ?,
+            updated_at = datetime('now')
+        WHERE id = ? AND store_id = ?
+      `).run(r.net_qty, r.product_cost_id, sid);
       insLog.run(
         sid, r.product_cost_id, r.sku || '', r.parent_title, r.variant_title || '',
         r.net_qty, r.unit_cost || 0, String(oid), order.ref_number || `#${oid}`,
@@ -2484,8 +2501,8 @@ function restoreOrderFifoOnReturn(storeId, order, specificItems = null, actor = 
       const pmc = resolveOrderLineItemMasterCost(sid, item);
       if (!pmc) continue;
 
-      db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) + ?, updated_at = datetime('now') WHERE id = ?")
-        .run(qty, pmc.id);
+      db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) + ?, on_hand_qty = COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) + ?, updated_at = datetime('now') WHERE id = ?")
+        .run(qty, qty, pmc.id);
       restoreFifoBatch(sid, pmc.id, qty);
 
       insLog.run(

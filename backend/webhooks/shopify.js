@@ -3,6 +3,54 @@ const { markOrderAsCancelled } = require('../services/SyncService');
 const tenantContext = require('../tenant-context');
 const fs = require('fs');
 
+// Bounded 12-second dedupe cache for real-time order-triggered inventory micro-sync (Rule 9 memory-safe)
+const _recentOrderProductSync = new Map();
+const MAX_SYNC_CACHE = 200;
+
+function triggerOrderInventoryMicroSync(tenantId, storeId, payload) {
+  try {
+    const rawItems = Array.isArray(payload?.line_items)
+      ? payload.line_items
+      : (Array.isArray(payload?.fulfillment?.line_items) ? payload.fulfillment.line_items : []);
+    if (rawItems.length === 0) return;
+
+    const productIds = [...new Set(rawItems.map(li => li?.product_id).filter(Boolean))].slice(0, 12);
+    if (productIds.length === 0) return;
+
+    const now = Date.now();
+    if (_recentOrderProductSync.size > MAX_SYNC_CACHE) {
+      for (const [k, ts] of _recentOrderProductSync.entries()) {
+        if (now - ts > 15000) _recentOrderProductSync.delete(k);
+      }
+      if (_recentOrderProductSync.size > MAX_SYNC_CACHE) _recentOrderProductSync.clear();
+    }
+
+    const toSync = [];
+    for (const pid of productIds) {
+      const key = `${tenantId}:${storeId}:${pid}`;
+      const lastTs = _recentOrderProductSync.get(key) || 0;
+      if (now - lastTs < 12000) continue;
+      _recentOrderProductSync.set(key, now);
+      toSync.push(pid);
+    }
+    if (toSync.length === 0) return;
+
+    // Fire-and-forget lightweight GraphQL micro-sync to refresh Available / Committed / On Hand / Incoming
+    setImmediate(() => {
+      tenantContext.run(tenantId, async () => {
+        try {
+          const { syncSingleProductCosts } = require('../services/costSyncService');
+          for (const pid of toSync) {
+            await syncSingleProductCosts(storeId, pid).catch(() => {});
+          }
+        } catch (err) {
+          console.warn('[Shopify Webhook] Order inventory micro-sync warning:', err.message);
+        }
+      });
+    });
+  } catch (_) {}
+}
+
 function getAllTenants() {
   const tenants = ['default'];
   try {
@@ -161,8 +209,9 @@ module.exports = async function handleShopifyWebhook(req, res) {
         const targetOrderId = payload.order_id || payload.id;
         console.log(`🛑 [Shopify Webhook] Immediate cancellation detected for Shopify Order ID: ${targetOrderId}`);
         markOrderAsCancelled(store.id, targetOrderId);
+        triggerOrderInventoryMicroSync(matchedTenantId, store.id, payload);
       } else {
-        // Normal single order sync for other updates (e.g. orders/updated, orders/fulfilled, fulfillments/create)
+        // Normal single order sync for other updates (e.g. orders/create, orders/updated, orders/fulfilled, fulfillments/create)
         const targetOrderId = payload.order_id || payload.id;
         console.log(`📦 [Shopify Webhook] Syncing single order ID: ${targetOrderId} (Topic: ${topic})`);
         const { syncSingleShopifyOrder } = require('../engines/shopify');
@@ -170,6 +219,7 @@ module.exports = async function handleShopifyWebhook(req, res) {
         if (!success) {
           throw new Error(`Single order sync failed for order ${targetOrderId}`);
         }
+        triggerOrderInventoryMicroSync(matchedTenantId, store.id, payload);
       }
     });
 

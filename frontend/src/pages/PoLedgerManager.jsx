@@ -1028,6 +1028,28 @@ export default function PoLedgerManager() {
     }
   }
 
+  const handleSyncShopifyInventory = async () => {
+    setBusyKey('syncShopifyInv')
+    try {
+      const res = await fetch(`${API}/api/cost-manager/sync-shopify`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ store_id: activeStoreId }),
+      })
+      const j = await res.json()
+      if (j.success) {
+        addToast(`Synced live Shopify Available / Committed / On Hand (${j.count || 0} SKUs)`, 'success')
+        await refreshAll()
+      } else {
+        addToast(j.error || j.message || 'Shopify sync failed', 'error')
+      }
+    } catch (err) {
+      addToast('Shopify sync request failed', 'error')
+    } finally {
+      setBusyKey('')
+    }
+  }
+
   const handleToggleContinueSelling = async (item) => {
     const nextEnabled = String(item.inventory_policy || '').toLowerCase() !== 'continue'
     setBusyKey(`cs-${item.id}`)
@@ -1593,7 +1615,7 @@ export default function PoLedgerManager() {
                     {pos.map(p => {
                       const st = PO_STATUS_BADGE[p.status] || PO_STATUS_BADGE.ordered
                       const canReceive = !p.is_baseline && ['ordered', 'partial'].includes(p.status)
-                      const canPay = !p.is_baseline && p.status !== 'cancelled' && p.remaining_payable > 0
+                      const canPay = !p.is_baseline && Boolean(p.supplier_id) && p.status !== 'cancelled' && p.remaining_payable > 0
                       return (
                         <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
                           <td style={{ padding: '11px 14px' }}>
@@ -1601,7 +1623,9 @@ export default function PoLedgerManager() {
                             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.line_count} SKUs</div>
                           </td>
                           <td style={{ padding: '11px 12px', color: 'var(--text-primary)', fontWeight: 600 }}>
-                            {p.is_baseline ? 'Opening Stock Snapshot' : (p.supplier_name || '—')}
+                            {p.is_baseline
+                              ? 'Opening Stock Snapshot'
+                              : (p.supplier_name || <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: 12 }}>Already Paid / Recount</span>)}
                           </td>
                           <td style={{ padding: '11px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{p.order_date}</td>
                           <td style={{ padding: '11px 12px' }}>
@@ -1656,6 +1680,11 @@ export default function PoLedgerManager() {
                               <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Payable Rs. 0</span>
                             ) : p.status === 'cancelled' ? (
                               <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Cancelled</span>
+                            ) : !p.supplier_id ? (
+                              <>
+                                <div style={{ fontWeight: 700, color: 'var(--text-secondary)', fontSize: 12 }}>No Khata Bill</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Already paid / Recount</div>
+                              </>
                             ) : (Number(p.billed_cost) || 0) <= 0 ? (
                               <>
                                 <div style={{ fontWeight: 700, color: '#b45309' }}>Pending Receipt</div>
@@ -2214,6 +2243,19 @@ export default function PoLedgerManager() {
             <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
               <button
                 type="button"
+                disabled={busyKey === 'syncShopifyInv'}
+                onClick={handleSyncShopifyInventory}
+                title="Pull latest Available, Committed, On Hand & Incoming live from Shopify"
+                style={{
+                  padding: '7px 11px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  background: 'rgba(37,99,235,0.10)', color: '#1d4ed8', border: '1px solid rgba(37,99,235,0.32)',
+                  opacity: busyKey === 'syncShopifyInv' ? 0.65 : 1,
+                }}
+              >
+                {busyKey === 'syncShopifyInv' ? '⏳ Syncing...' : '🔄 Sync Shopify'}
+              </button>
+              <button
+                type="button"
                 disabled={busyKey === 'pushBulk' || selectedCount === 0}
                 onClick={() => handlePushInventoryToShopify(Array.from(selectedInvIds), 'Selected SKUs', 'pushBulk')}
                 title={selectedCount === 0 ? 'Check parent products or variants to push their exact ERP On-Hand qty to Shopify' : `Push ${selectedCount} selected SKU(s) exact ERP On-Hand qty to Shopify`}
@@ -2305,27 +2347,26 @@ export default function PoLedgerManager() {
 
           <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                    <th style={{ padding: '9px 10px 9px 14px', width: 28 }} />
-                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Product / Variant</th>
-                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Available</th>
-                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Committed</th>
-                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>On Hand</th>
-                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Incoming</th>
-                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Active FIFO Cost</th>
-                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stock Value</th>
-                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Continue Selling</th>
-                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Shared Pool</th>
-                    <th style={{ padding: '9px 14px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Actions</th>
+                    <th style={{ padding: '8px 6px 8px 12px', width: 26 }} />
+                    <th style={{ padding: '8px 8px', fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', minWidth: 220 }}>Product / Variant</th>
+                    <th style={{ padding: '8px 7px', fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>Avail</th>
+                    <th style={{ padding: '8px 7px', fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>Comm.</th>
+                    <th style={{ padding: '8px 7px', fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>On Hand</th>
+                    <th style={{ padding: '8px 7px', fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>Incom.</th>
+                    <th style={{ padding: '8px 8px', fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>FIFO Cost</th>
+                    <th style={{ padding: '8px 8px', fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>Value</th>
+                    <th style={{ padding: '8px 7px', fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'center', whiteSpace: 'nowrap' }}>Pre-Order</th>
+                    <th style={{ padding: '8px 12px 8px 7px', fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {invViewMode === 'grouped' ? (
                     groupedWarehouseInventory.length === 0 ? (
                       <tr>
-                        <td colSpan={11} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <td colSpan={10} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
                           No products match your search/filter.
                         </td>
                       </tr>
@@ -2336,7 +2377,7 @@ export default function PoLedgerManager() {
                       const parentBusyKey = `pushParent-${group.parentTitle}`
                       const costRangeLabel = group.minCost === 0
                         ? 'Rs. 0'
-                        : (group.minCost === group.maxCost ? fmtRs(group.minCost) : `${fmtRs(group.minCost)} – ${fmtRs(group.maxCost)}`)
+                        : (group.minCost === group.maxCost ? fmtRs(group.minCost) : `${fmtRs(group.minCost)}–${fmtRs(group.maxCost)}`)
 
                       return (
                         <React.Fragment key={group.parentTitle}>
@@ -2349,7 +2390,7 @@ export default function PoLedgerManager() {
                               cursor: 'pointer',
                             }}
                           >
-                            <td style={{ padding: '10px 8px 10px 14px' }} onClick={e => e.stopPropagation()}>
+                            <td style={{ padding: '9px 6px 9px 12px' }} onClick={e => e.stopPropagation()}>
                               <input
                                 type="checkbox"
                                 disabled={group.linkedIds.length === 0}
@@ -2360,88 +2401,90 @@ export default function PoLedgerManager() {
                                 style={{ cursor: group.linkedIds.length > 0 ? 'pointer' : 'not-allowed' }}
                               />
                             </td>
-                            <td style={{ padding: '10px 10px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                            <td style={{ padding: '9px 8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span style={{
-                                  width: 20, height: 20, borderRadius: 5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                  background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', flexShrink: 0,
+                                  width: 19, height: 19, borderRadius: 5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: 10.5, fontWeight: 800, color: 'var(--text-secondary)', flexShrink: 0,
                                 }}>
                                   {isExpanded ? '▾' : '▸'}
                                 </span>
                                 {group.image ? (
-                                  <img src={group.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
+                                  <img src={group.image} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
                                 ) : (
-                                  <div style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>📦</div>
+                                  <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>📦</div>
                                 )}
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                    <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>{group.parentTitle}</span>
-                                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '1.5px 6px', borderRadius: 99, background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
-                                      {group.variants.length} variant{group.variants.length > 1 ? 's' : ''}
+                                  <div style={{ fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.25 }}>{group.parentTitle}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 2.5 }}>
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5.5px', borderRadius: 99, background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                                      {group.variants.length} var{group.variants.length > 1 ? 's' : ''}
                                     </span>
                                     {group.linkedIds.length === 0 && (
                                       <Pill label="No Shopify ID" color="#b45309" bg="rgba(245,158,11,0.12)" border="rgba(245,158,11,0.30)" />
                                     )}
                                     {group.backorderCount > 0 && (
-                                      <Pill label={`${group.backorderCount} Backorder`} color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
+                                      <Pill label={`${group.backorderCount} BO`} color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
+                                    )}
+                                    {group.poolKeys.size > 0 && (
+                                      <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5.5px', borderRadius: 99, background: 'rgba(124,58,237,0.10)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.26)' }}>
+                                        🔗 {Array.from(group.poolKeys).slice(0, 2).join(', ')}
+                                      </span>
                                     )}
                                   </div>
                                 </div>
                               </div>
                             </td>
-                            <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            <td style={{ padding: '9px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                               <span style={{
-                                fontWeight: 800, fontSize: 13,
+                                fontWeight: 800, fontSize: 12.5,
                                 color: group.totalQty < 0 ? '#dc2626' : (group.totalQty === 0 ? '#b45309' : '#059669'),
                               }}>
                                 {group.totalQty}
                               </span>
                             </td>
-                            <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            <td style={{ padding: '9px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                               {group.totalCommitted > 0 ? (
-                                <span style={{ padding: '2px 7px', borderRadius: 99, fontSize: 11.5, fontWeight: 800, background: 'rgba(245,158,11,0.13)', color: '#b45309', border: '1px solid rgba(245,158,11,0.30)' }}>
+                                <span style={{ padding: '1.5px 6px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: 'rgba(245,158,11,0.14)', color: '#b45309', border: '1px solid rgba(245,158,11,0.30)' }}>
                                   {group.totalCommitted}
                                 </span>
                               ) : (
-                                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>0</span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>0</span>
                               )}
                             </td>
-                            <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: 'var(--text-primary)' }}>
+                            <td style={{ padding: '9px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
                               {group.totalOnHand}
                             </td>
-                            <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            <td style={{ padding: '9px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                               {group.totalIncoming > 0 ? (
-                                <span style={{ padding: '2px 7px', borderRadius: 99, fontSize: 11.5, fontWeight: 800, background: 'rgba(37,99,235,0.11)', color: '#2563eb' }}>
+                                <span style={{ padding: '1.5px 6px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: 'rgba(37,99,235,0.11)', color: '#2563eb' }}>
                                   +{group.totalIncoming}
                                 </span>
                               ) : (
-                                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>0</span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>0</span>
                               )}
                             </td>
-                            <td style={{ padding: '10px 10px', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: group.minCost > 0 ? 'var(--text-primary)' : '#dc2626' }}>
+                            <td style={{ padding: '9px 8px', fontVariantNumeric: 'tabular-nums', fontWeight: 600, whiteSpace: 'nowrap', color: group.minCost > 0 ? 'var(--text-primary)' : '#dc2626' }}>
                               {costRangeLabel}
                               {group.openBatches > 0 && (
-                                <div style={{ fontSize: 10.5, color: '#2563eb', fontWeight: 700 }}>{group.openBatches} FIFO batch{group.openBatches > 1 ? 'es' : ''}</div>
+                                <div style={{ fontSize: 10, color: '#2563eb', fontWeight: 700 }}>{group.openBatches} FIFO</div>
                               )}
                             </td>
-                            <td style={{ padding: '10px 10px', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            <td style={{ padding: '9px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
                               {fmtRs(group.totalValue)}
                             </td>
-                            <td style={{ padding: '10px 10px', fontSize: 11.5, color: group.continueCount > 0 ? '#2563eb' : 'var(--text-muted)', fontWeight: 700 }}>
+                            <td style={{ padding: '9px 7px', textAlign: 'center', fontSize: 11, color: group.continueCount > 0 ? '#2563eb' : 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                               {group.continueCount > 0 ? `${group.continueCount}/${group.variants.length} ON` : 'OFF'}
                             </td>
-                            <td style={{ padding: '10px 10px', fontSize: 11.5, color: group.poolKeys.size > 0 ? '#7c3aed' : 'var(--text-muted)', fontWeight: 600 }}>
-                              {group.poolKeys.size > 0 ? Array.from(group.poolKeys).slice(0, 2).join(', ') : '—'}
-                            </td>
-                            <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
-                              <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                            <td style={{ padding: '9px 12px 9px 7px', textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                              <div style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>
                                 <button
                                   type="button"
                                   disabled={group.linkedIds.length === 0 || busyKey === parentBusyKey}
                                   onClick={() => handlePushInventoryToShopify(group.linkedIds, group.parentTitle, parentBusyKey)}
                                   title={group.linkedIds.length > 0 ? `Push exact ERP On-Hand stock of all ${group.linkedIds.length} linked variant(s) to Shopify` : 'No Shopify Variant ID linked'}
                                   style={{
-                                    padding: '5px 10px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
+                                    padding: '4.5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700,
                                     cursor: group.linkedIds.length > 0 ? 'pointer' : 'not-allowed',
                                     background: group.linkedIds.length > 0 ? 'rgba(16,185,129,0.11)' : 'var(--bg-elevated)',
                                     color: group.linkedIds.length > 0 ? '#047857' : 'var(--text-muted)',
@@ -2449,17 +2492,17 @@ export default function PoLedgerManager() {
                                     opacity: group.linkedIds.length > 0 ? 1 : 0.55,
                                   }}
                                 >
-                                  {busyKey === parentBusyKey ? '⏳ Pushing...' : '🚀 Push Product'}
+                                  {busyKey === parentBusyKey ? '...' : '🚀 Push'}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => toggleParentExpand(group.parentTitle)}
                                   style={{
-                                    padding: '5px 8px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
+                                    padding: '4.5px 7px', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer',
                                     background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)',
                                   }}
                                 >
-                                  {isExpanded ? 'Hide' : 'Variants'}
+                                  {isExpanded ? 'Hide' : 'Open'}
                                 </button>
                               </div>
                             </td>
@@ -2476,7 +2519,7 @@ export default function PoLedgerManager() {
                             const inc = Number(item.incoming_qty) || 0
                             return (
                               <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
-                                <td style={{ padding: '8px 8px 8px 14px' }}>
+                                <td style={{ padding: '7.5px 6px 7.5px 12px' }}>
                                   <input
                                     type="checkbox"
                                     disabled={!hasVarId}
@@ -2485,102 +2528,101 @@ export default function PoLedgerManager() {
                                     style={{ cursor: hasVarId ? 'pointer' : 'not-allowed' }}
                                   />
                                 </td>
-                                <td style={{ padding: '8px 10px 8px 36px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <td style={{ padding: '7.5px 8px 7.5px 32px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                                     <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item._displayVariant}</span>
                                     {item.sku ? (
-                                      <span style={{ fontSize: 10.5, fontFamily: 'monospace', padding: '1px 5px', borderRadius: 4, background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                                      <span style={{ fontSize: 10, fontFamily: 'monospace', padding: '1px 5px', borderRadius: 4, background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                                         {item.sku}
                                       </span>
                                     ) : (
-                                      <Pill label={hasVarId ? 'No SKU (Variant ID Only)' : 'Missing SKU & ID'} color="#b45309" bg="rgba(245,158,11,0.12)" border="rgba(245,158,11,0.30)" />
+                                      <Pill label={hasVarId ? 'No SKU' : 'Missing SKU & ID'} color="#b45309" bg="rgba(245,158,11,0.12)" border="rgba(245,158,11,0.30)" />
                                     )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setPoolModal({ item, shared_pool_key: item.shared_pool_key || '' })}
+                                      title="Link this SKU to a Shared Stock Pool across stores"
+                                      style={{
+                                        padding: '1px 6px', borderRadius: 99, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                                        background: item.shared_pool_key ? 'rgba(124,58,237,0.11)' : 'transparent',
+                                        color: item.shared_pool_key ? '#7c3aed' : 'var(--text-muted)',
+                                        border: `1px solid ${item.shared_pool_key ? 'rgba(124,58,237,0.30)' : 'var(--border)'}`,
+                                      }}
+                                    >
+                                      {item.shared_pool_key ? `🔗 ${item.shared_pool_key}` : '🔗 Pool'}
+                                    </button>
                                   </div>
                                 </td>
-                                <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                <td style={{ padding: '7.5px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                                   <span style={{
-                                    fontWeight: 800, fontSize: 12.5,
+                                    fontWeight: 800, fontSize: 12,
                                     color: isBackorder ? '#dc2626' : (item.inventory_qty === 0 ? '#b45309' : '#059669'),
                                   }}>
                                     {item.inventory_qty}
                                   </span>
-                                  {isBackorder && <span style={{ marginLeft: 5, fontSize: 9.5, color: '#dc2626', fontWeight: 700 }}>BO</span>}
+                                  {isBackorder && <span style={{ marginLeft: 4, fontSize: 9.5, color: '#dc2626', fontWeight: 700 }}>BO</span>}
                                 </td>
-                                <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                <td style={{ padding: '7.5px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                                   {comm > 0 ? (
-                                    <span style={{ padding: '1.5px 6px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: 'rgba(245,158,11,0.14)', color: '#b45309' }}>
+                                    <span style={{ padding: '1.5px 5.5px', borderRadius: 99, fontSize: 10.5, fontWeight: 800, background: 'rgba(245,158,11,0.14)', color: '#b45309' }}>
                                       {comm}
                                     </span>
                                   ) : (
-                                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>0</span>
+                                    <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>0</span>
                                   )}
                                 </td>
-                                <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                <td style={{ padding: '7.5px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
                                   {onHand}
                                 </td>
-                                <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                <td style={{ padding: '7.5px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                                   {inc > 0 ? (
-                                    <span style={{ padding: '1.5px 6px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: 'rgba(37,99,235,0.11)', color: '#2563eb' }}>
+                                    <span style={{ padding: '1.5px 5.5px', borderRadius: 99, fontSize: 10.5, fontWeight: 800, background: 'rgba(37,99,235,0.11)', color: '#2563eb' }}>
                                       +{inc}
                                     </span>
                                   ) : (
-                                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>0</span>
+                                    <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>0</span>
                                   )}
                                 </td>
-                                <td style={{ padding: '8px 10px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                                <td style={{ padding: '7.5px 8px', fontVariantNumeric: 'tabular-nums', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                   {item.avg_cost > 0 ? (
-                                    <div>
+                                    <span>
                                       <span style={{ color: 'var(--text-primary)' }}>{fmtRs(item.avg_cost)}</span>
                                       {item.open_batches > 1 && (
-                                        <span style={{ marginLeft: 5, fontSize: 10.5, color: '#2563eb', fontWeight: 700 }}>({item.open_batches} FIFO)</span>
+                                        <span style={{ marginLeft: 4, fontSize: 10, color: '#2563eb', fontWeight: 700 }}>({item.open_batches})</span>
                                       )}
-                                    </div>
+                                    </span>
                                   ) : (
-                                    <Pill label="Rs. 0 · Missing" color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
+                                    <Pill label="Rs. 0" color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
                                   )}
                                 </td>
-                                <td style={{ padding: '8px 10px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
+                                <td style={{ padding: '7.5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                                   {fmtRs(item.stock_value)}
                                 </td>
-                                <td style={{ padding: '8px 10px' }}>
+                                <td style={{ padding: '7.5px 7px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                                   <button
                                     type="button"
                                     disabled={busyKey === `cs-${item.id}`}
                                     onClick={() => handleToggleContinueSelling(item)}
                                     title="Toggle Shopify Continue Selling When Out of Stock"
                                     style={{
-                                      padding: '3.5px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                      padding: '3px 8px', borderRadius: 99, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
                                       background: isContinue ? 'rgba(37,99,235,0.12)' : 'var(--bg-surface)',
                                       color: isContinue ? '#2563eb' : 'var(--text-muted)',
                                       border: `1px solid ${isContinue ? 'rgba(37,99,235,0.35)' : 'var(--border)'}`,
                                     }}
                                   >
-                                    {busyKey === `cs-${item.id}` ? '...' : (isContinue ? 'ON (Pre-Order)' : 'OFF')}
+                                    {busyKey === `cs-${item.id}` ? '...' : (isContinue ? 'ON' : 'OFF')}
                                   </button>
                                 </td>
-                                <td style={{ padding: '8px 10px' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => setPoolModal({ item, shared_pool_key: item.shared_pool_key || '' })}
-                                    style={{
-                                      padding: '3px 8px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                                      background: item.shared_pool_key ? 'rgba(124,58,237,0.10)' : 'transparent',
-                                      color: item.shared_pool_key ? '#7c3aed' : 'var(--text-muted)',
-                                      border: `1px solid ${item.shared_pool_key ? 'rgba(124,58,237,0.30)' : 'var(--border)'}`,
-                                    }}
-                                  >
-                                    {item.shared_pool_key || 'Isolated (Link)'}
-                                  </button>
-                                </td>
-                                <td style={{ padding: '8px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                  <div style={{ display: 'inline-flex', gap: 5 }}>
+                                <td style={{ padding: '7.5px 12px 7.5px 7px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                  <div style={{ display: 'inline-flex', gap: 4 }}>
                                     <button
                                       type="button"
                                       disabled={!hasVarId || busyKey === rowBusyKey}
                                       onClick={() => handlePushInventoryToShopify([item.id], `${group.parentTitle} (${item._displayVariant})`, rowBusyKey)}
                                       title={hasVarId ? `Set Shopify On-Hand = ${Math.max(0, onHand)}` : 'No Shopify Variant ID linked'}
                                       style={{
-                                        padding: '4.5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700,
+                                        padding: '4px 8px', borderRadius: 6, fontSize: 10.5, fontWeight: 700,
                                         cursor: hasVarId ? 'pointer' : 'not-allowed',
                                         background: hasVarId ? 'rgba(16,185,129,0.12)' : 'var(--bg-surface)',
                                         color: hasVarId ? '#047857' : 'var(--text-muted)',
@@ -2594,11 +2636,11 @@ export default function PoLedgerManager() {
                                       type="button"
                                       onClick={() => setAdjustModal({ item, qty_delta: '', movement_type: 'MANUAL_ADJUST', notes: '', pushToShopify: true })}
                                       style={{
-                                        padding: '4.5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                        padding: '4px 8px', borderRadius: 6, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
                                         background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border)',
                                       }}
                                     >
-                                      ± Adjust
+                                      ± Adj
                                     </button>
                                   </div>
                                 </td>
@@ -2619,7 +2661,7 @@ export default function PoLedgerManager() {
                       const inc = Number(item.incoming_qty) || 0
                       return (
                         <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '10px 8px 10px 14px' }}>
+                          <td style={{ padding: '9px 6px 9px 12px' }}>
                             <input
                               type="checkbox"
                               disabled={!hasVarId}
@@ -2628,101 +2670,99 @@ export default function PoLedgerManager() {
                               style={{ cursor: hasVarId ? 'pointer' : 'not-allowed' }}
                             />
                           </td>
-                          <td style={{ padding: '10px 10px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <td style={{ padding: '9px 8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                               <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.parent_title}</span>
                               {!item.sku && (
-                                <Pill label={hasVarId ? 'No SKU (Variant ID Only)' : 'Missing SKU & ID'} color="#b45309" bg="rgba(245,158,11,0.12)" border="rgba(245,158,11,0.30)" />
+                                <Pill label={hasVarId ? 'No SKU' : 'Missing SKU & ID'} color="#b45309" bg="rgba(245,158,11,0.12)" border="rgba(245,158,11,0.30)" />
                               )}
                             </div>
-                            <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                              {[item.variant_title, item.sku ? `SKU: ${item.sku}` : ''].filter(Boolean).join(' · ')}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 11, color: 'var(--text-muted)', marginTop: 1.5 }}>
+                              <span>{[item.variant_title, item.sku ? `SKU: ${item.sku}` : ''].filter(Boolean).join(' · ')}</span>
+                              <button
+                                type="button"
+                                onClick={() => setPoolModal({ item, shared_pool_key: item.shared_pool_key || '' })}
+                                style={{
+                                  padding: '1px 5.5px', borderRadius: 99, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                                  background: item.shared_pool_key ? 'rgba(124,58,237,0.10)' : 'transparent',
+                                  color: item.shared_pool_key ? '#7c3aed' : 'var(--text-muted)',
+                                  border: `1px solid ${item.shared_pool_key ? 'rgba(124,58,237,0.30)' : 'var(--border)'}`,
+                                }}
+                              >
+                                {item.shared_pool_key ? `🔗 ${item.shared_pool_key}` : '🔗 Pool'}
+                              </button>
                             </div>
                           </td>
-                          <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          <td style={{ padding: '9px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                             <span style={{
-                              fontWeight: 800, fontSize: 13,
+                              fontWeight: 800, fontSize: 12.5,
                               color: isBackorder ? '#dc2626' : (item.inventory_qty === 0 ? '#b45309' : '#059669'),
                             }}>
                               {item.inventory_qty}
                             </span>
-                            {isBackorder && <span style={{ marginLeft: 5, fontSize: 10, color: '#dc2626', fontWeight: 700 }}>BO</span>}
+                            {isBackorder && <span style={{ marginLeft: 4, fontSize: 9.5, color: '#dc2626', fontWeight: 700 }}>BO</span>}
                           </td>
-                          <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          <td style={{ padding: '9px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                             {comm > 0 ? (
-                              <span style={{ padding: '2px 7px', borderRadius: 99, fontSize: 11.5, fontWeight: 800, background: 'rgba(245,158,11,0.14)', color: '#b45309' }}>
+                              <span style={{ padding: '1.5px 6px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: 'rgba(245,158,11,0.14)', color: '#b45309' }}>
                                 {comm}
                               </span>
                             ) : (
-                              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>0</span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>0</span>
                             )}
                           </td>
-                          <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: 'var(--text-primary)' }}>
+                          <td style={{ padding: '9px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
                             {onHand}
                           </td>
-                          <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          <td style={{ padding: '9px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                             {inc > 0 ? (
-                              <span style={{ padding: '2px 7px', borderRadius: 99, fontSize: 11.5, fontWeight: 800, background: 'rgba(37,99,235,0.11)', color: '#2563eb' }}>
+                              <span style={{ padding: '1.5px 6px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: 'rgba(37,99,235,0.11)', color: '#2563eb' }}>
                                 +{inc}
                               </span>
                             ) : (
-                              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>0</span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>0</span>
                             )}
                           </td>
-                          <td style={{ padding: '10px 10px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                          <td style={{ padding: '9px 8px', fontVariantNumeric: 'tabular-nums', fontWeight: 600, whiteSpace: 'nowrap' }}>
                             {item.avg_cost > 0 ? (
-                              <div>
+                              <span>
                                 <span style={{ color: 'var(--text-primary)' }}>{fmtRs(item.avg_cost)}</span>
                                 {item.open_batches > 1 && (
-                                  <div style={{ fontSize: 10.5, color: '#2563eb', fontWeight: 700 }}>{item.open_batches} FIFO batches</div>
+                                  <span style={{ marginLeft: 4, fontSize: 10, color: '#2563eb', fontWeight: 700 }}>({item.open_batches})</span>
                                 )}
-                              </div>
+                              </span>
                             ) : (
-                              <Pill label="Rs. 0 · Cost Missing" color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
+                              <Pill label="Rs. 0" color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
                             )}
                           </td>
-                          <td style={{ padding: '10px 10px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
+                          <td style={{ padding: '9px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                             {fmtRs(item.stock_value)}
                           </td>
-                          <td style={{ padding: '10px 10px' }}>
+                          <td style={{ padding: '9px 7px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                             <button
                               type="button"
                               disabled={busyKey === `cs-${item.id}`}
                               onClick={() => handleToggleContinueSelling(item)}
                               title="Toggle Shopify Continue Selling When Out of Stock"
                               style={{
-                                padding: '4px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                padding: '3.5px 8px', borderRadius: 99, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
                                 background: isContinue ? 'rgba(37,99,235,0.12)' : 'var(--bg-elevated)',
                                 color: isContinue ? '#2563eb' : 'var(--text-muted)',
                                 border: `1px solid ${isContinue ? 'rgba(37,99,235,0.35)' : 'var(--border)'}`,
                               }}
                             >
-                              {busyKey === `cs-${item.id}` ? '...' : (isContinue ? 'ON (Pre-Order)' : 'OFF')}
+                              {busyKey === `cs-${item.id}` ? '...' : (isContinue ? 'ON' : 'OFF')}
                             </button>
                           </td>
-                          <td style={{ padding: '10px 10px' }}>
-                            <button
-                              type="button"
-                              onClick={() => setPoolModal({ item, shared_pool_key: item.shared_pool_key || '' })}
-                              style={{
-                                padding: '3.5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                                background: item.shared_pool_key ? 'rgba(124,58,237,0.10)' : 'transparent',
-                                color: item.shared_pool_key ? '#7c3aed' : 'var(--text-muted)',
-                                border: `1px solid ${item.shared_pool_key ? 'rgba(124,58,237,0.30)' : 'var(--border)'}`,
-                              }}
-                            >
-                              {item.shared_pool_key || 'Isolated (Link)'}
-                            </button>
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'inline-flex', gap: 5 }}>
+                          <td style={{ padding: '9px 12px 9px 7px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'inline-flex', gap: 4 }}>
                               <button
                                 type="button"
                                 disabled={!hasVarId || busyKey === rowBusyKey}
                                 onClick={() => handlePushInventoryToShopify([item.id], `${item.parent_title}${item.variant_title ? ` (${item.variant_title})` : ''}`, rowBusyKey)}
                                 title={hasVarId ? `Set Shopify On-Hand = ${Math.max(0, onHand)}` : 'No Shopify Variant ID linked'}
                                 style={{
-                                  padding: '5px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
+                                  padding: '4.5px 8px', borderRadius: 7, fontSize: 11, fontWeight: 700,
                                   cursor: hasVarId ? 'pointer' : 'not-allowed',
                                   background: hasVarId ? 'rgba(16,185,129,0.12)' : 'var(--bg-elevated)',
                                   color: hasVarId ? '#047857' : 'var(--text-muted)',
@@ -2736,11 +2776,11 @@ export default function PoLedgerManager() {
                                 type="button"
                                 onClick={() => setAdjustModal({ item, qty_delta: '', movement_type: 'MANUAL_ADJUST', notes: '', pushToShopify: true })}
                                 style={{
-                                  padding: '5px 10px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                                  padding: '4.5px 8px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
                                   background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)',
                                 }}
                               >
-                                ± Adjust
+                                ± Adj
                               </button>
                             </div>
                           </td>
