@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useMemo, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 const API = import.meta.env.VITE_API_URL || ''
@@ -153,9 +153,39 @@ function CopyBox({ label, value, hint, onCopy, mono = true }) {
 export default function SetupGuide() {
   const { stores, activeStoreId, token, addToast } = useApp()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  const [activeTab, setActiveTab] = useState('onboarding') // 'onboarding' | 'theme' | 'actions' | 'playbook' | 'reference'
+  const validTabs = ['onboarding', 'theme', 'extension', 'actions', 'playbook', 'reference']
+  const initialTab = validTabs.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'onboarding'
+  const [activeTab, setActiveTab] = useState(initialTab)
+  const [extMeta, setExtMeta] = useState({
+    name: 'Trace ERP WhatsApp Web Helper',
+    version: '1.2.2',
+    description: 'Auto-paste order messages and product images into WhatsApp Web from TRACE ERP Bulk Queue & Shopify Admin CS tagging.',
+    filename: 'trace-erp-extension-latest.zip',
+    downloadUrl: '/downloads/trace-erp-extension-latest.zip',
+    latestUrl: '/downloads/trace-erp-extension-latest.zip',
+    sizeBytes: 24000,
+    fileCount: 8,
+    files: ['manifest.json', 'background.js', 'content.js', 'whatsapp-helper.js', 'popup.html', 'popup.js', 'styles.css', 'README.md'],
+    hostPermissions: ['https://admin.shopify.com/*', 'https://*.myshopify.com/*', 'https://trace-erp-production.up.railway.app/*', 'https://web.whatsapp.com/*'],
+    builtAt: null,
+  })
   const [busyKey, setBusyKey] = useState('')
+
+  useEffect(() => {
+    const qTab = searchParams.get('tab')
+    if (qTab && validTabs.includes(qTab) && qTab !== activeTab) {
+      setActiveTab(qTab)
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    fetch('/downloads/extension-meta.json', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (data && data.version) setExtMeta(data) })
+      .catch(() => {})
+  }, [])
   const [diagnoseResult, setDiagnoseResult] = useState(null)
   const [newThemeStoreName, setNewThemeStoreName] = useState('')
   const [newThemeStoreDomain, setNewThemeStoreDomain] = useState('')
@@ -418,6 +448,7 @@ redirect_urls = [
         {[
           { id: 'onboarding', label: `🚀 Attach New Store (${completedSteps}/${totalSteps})` },
           { id: 'theme', label: '🎨 Theme ZIP & Antigravity Sync' },
+          { id: 'extension', label: `🧩 Chrome Extension (v${extMeta.version})` },
           { id: 'actions', label: '⚡ 1-Click Primary Actions' },
           { id: 'playbook', label: '📘 How to Use ERP (Daily SOP)' },
           { id: 'reference', label: '🔗 Webhooks & Copy Vault' },
@@ -427,7 +458,7 @@ redirect_urls = [
             <button
               key={t.id}
               type="button"
-              onClick={() => setActiveTab(t.id)}
+              onClick={() => { setActiveTab(t.id); setSearchParams(t.id === 'onboarding' ? {} : { tab: t.id }) }}
               style={{
                 padding: '8px 14px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                 background: active ? '#2563eb' : 'var(--bg-surface)',
@@ -938,6 +969,165 @@ redirect_urls = [
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* TAB 2.5: CHROME EXTENSION — SERVER-HOSTED ZIP & LAPTOP SETUP        */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'extension' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Hero Download Card */}
+          <div style={{
+            ...cardStyle,
+            border: '1px solid rgba(16,185,129,0.35)',
+            background: 'linear-gradient(135deg, rgba(16,185,129,0.07) 0%, var(--bg-surface) 60%)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: '1 1 320px' }}>
+                <div style={{
+                  width: 52, height: 52, borderRadius: 14, flexShrink: 0,
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  color: '#fff', fontSize: 26, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 6px 18px rgba(16,185,129,0.28)',
+                }}>🧩</div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)' }}>
+                      {extMeta.name}
+                    </span>
+                    <span style={{
+                      padding: '2px 9px', borderRadius: 99, fontSize: 11.5, fontWeight: 800,
+                      background: 'rgba(16,185,129,0.16)', color: '#047857', border: '1px solid rgba(16,185,129,0.35)',
+                    }}>
+                      v{extMeta.version} · Latest
+                    </span>
+                    <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                      {Math.max(1, Math.round((extMeta.sizeBytes || 24000) / 1024))} KB · {extMeta.fileCount || 8} files
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
+                    {extMeta.description}
+                  </div>
+                  {extMeta.builtAt && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                      Auto-packaged on deploy: <strong>{new Date(extMeta.builtAt).toLocaleString()}</strong> · Always synced with server
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <a
+                  href={extMeta.downloadUrl || '/downloads/trace-erp-extension-latest.zip'}
+                  download={extMeta.filename || 'trace-erp-extension-latest.zip'}
+                  style={{
+                    padding: '11px 20px', borderRadius: 11, textDecoration: 'none',
+                    background: 'linear-gradient(135deg, #10b981, #059669)',
+                    color: '#fff', fontSize: 13.5, fontWeight: 800,
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    boxShadow: '0 4px 14px rgba(16,185,129,0.32)',
+                  }}
+                >
+                  ⬇️ Download Extension ZIP (v{extMeta.version})
+                </a>
+                <button
+                  type="button"
+                  onClick={() => copyText(`${appOrigin}${extMeta.latestUrl || '/downloads/trace-erp-extension-latest.zip'}`, 'Direct ZIP Download Link')}
+                  style={{
+                    padding: '11px 14px', borderRadius: 11, cursor: 'pointer',
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                    color: 'var(--text-primary)', fontSize: 12.5, fontWeight: 700,
+                  }}
+                >
+                  📋 Copy Direct Link
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 4-Step Chrome Setup Guide */}
+          <div style={cardStyle}>
+            <div style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4 }}>
+              💻 Kisi Bhi Naye Laptop Par Install Karne Ka 15-Second Tarika (Mac &amp; Windows)
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+              ZIP ke andar clean folder <code>trace-erp-extension-v{extMeta.version}/</code> packaged hai — unzip kar ke seedha Chrome mein Load Unpacked kar dein.
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 12 }}>
+              {[
+                { n: '1', title: 'Download ZIP', desc: 'Upar green "Download Extension ZIP" button par click karein ya staff ko Direct Link bhej dein.' },
+                { n: '2', title: 'Extract / Unzip', desc: `Downloaded file ko double-click (Mac) ya Right-Click → Extract All (Windows) karein. Clean folder trace-erp-extension-v${extMeta.version} ban jaye ga.` },
+                { n: '3', title: 'Open chrome://extensions', desc: 'Chrome address bar mein chrome://extensions kholein aur top-right corner par "Developer mode" ON kar dein.' },
+                { n: '4', title: 'Load Unpacked & Pin', desc: 'Top-left par "Load unpacked" dabayein, unzipped folder select karein, aur Chrome toolbar mein 🧩 icon Pin kar lein!' },
+              ].map(step => (
+                <div key={step.n} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: '11px 13px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+                    <span style={{
+                      width: 22, height: 22, borderRadius: 7, background: '#2563eb', color: '#fff',
+                      fontSize: 11.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    }}>{step.n}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{step.title}</span>
+                  </div>
+                  <div style={{ fontSize: 11.8, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{step.desc}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10 }}>
+              <CopyBox
+                label="Chrome Extensions Page URL (Paste in Address Bar)"
+                value="chrome://extensions"
+                hint="Chrome security blocks direct clicks on chrome:// links — copy & paste into a new tab."
+                onCopy={copyText}
+              />
+              <CopyBox
+                label="Permanent Latest ZIP Download URL (Share on WhatsApp)"
+                value={`${appOrigin}/downloads/trace-erp-extension-latest.zip`}
+                hint="Always points to the latest auto-built extension ZIP on Railway."
+                onCopy={copyText}
+              />
+            </div>
+          </div>
+
+          {/* Update Existing Laptop + Included Files */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
+            <div style={cardStyle}>
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8 }}>
+                🔄 Purane Laptop Par Extension Update Kaise Karein?
+              </div>
+              <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12.2, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                <li>Nayi ZIP download aur unzip karein.</li>
+                <li>Chrome mein <code>chrome://extensions</code> open karein → purani <strong>Trace ERP</strong> extension par <strong>Remove</strong> dabayein.</li>
+                <li><strong>Load unpacked</strong> par naya unzipped folder select karein.</li>
+                <li>Open <strong>Shopify Admin</strong> &amp; <strong>WhatsApp Web</strong> tabs ko 1 dafa refresh karein — Done!</li>
+              </ol>
+            </div>
+
+            <div style={cardStyle}>
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8 }}>
+                📦 Bundled Files &amp; Active Permissions
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                {(extMeta.files || []).map(f => (
+                  <code key={f} style={{
+                    fontSize: 11, padding: '3px 8px', borderRadius: 6,
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)',
+                  }}>{f}</code>
+                ))}
+              </div>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 5 }}>Active Domains:</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {(extMeta.hostPermissions || []).map(h => (
+                  <code key={h} style={{
+                    fontSize: 10.5, padding: '2px 7px', borderRadius: 6,
+                    background: 'rgba(37,99,235,0.08)', color: '#1d4ed8', border: '1px solid rgba(37,99,235,0.2)',
+                  }}>{h}</code>
+                ))}
+              </div>
             </div>
           </div>
         </div>

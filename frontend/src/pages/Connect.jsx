@@ -131,6 +131,17 @@ export default function Connect() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <button
             type="button"
+            onClick={() => navigate('/setup-guide?tab=extension')}
+            style={{
+              padding: '9px 14px', borderRadius: 10, cursor: 'pointer',
+              background: 'rgba(16,185,129,0.09)', border: '1px solid rgba(16,185,129,0.3)',
+              color: '#047857', fontSize: '0.8rem', fontWeight: 700,
+              display: 'inline-flex', alignItems: 'center', gap: 6
+            }}
+          >🧩 Extension ZIP</button>
+
+          <button
+            type="button"
             onClick={() => navigate('/setup-guide')}
             style={{
               padding: '9px 14px', borderRadius: 10, cursor: 'pointer',

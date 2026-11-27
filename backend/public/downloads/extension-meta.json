@@ -1,0 +1,27 @@
+{
+  "name": "Trace ERP WhatsApp Web Helper",
+  "version": "1.2.2",
+  "description": "Auto-paste order messages and product images into WhatsApp Web from TRACE ERP Bulk Queue.",
+  "filename": "trace-erp-extension-v1.2.2.zip",
+  "downloadUrl": "/downloads/trace-erp-extension-v1.2.2.zip",
+  "latestUrl": "/downloads/trace-erp-extension-latest.zip",
+  "sizeBytes": 23929,
+  "fileCount": 8,
+  "files": [
+    "README.md",
+    "background.js",
+    "content.js",
+    "manifest.json",
+    "popup.html",
+    "popup.js",
+    "styles.css",
+    "whatsapp-helper.js"
+  ],
+  "hostPermissions": [
+    "https://admin.shopify.com/*",
+    "https://*.myshopify.com/*",
+    "https://trace-erp-production.up.railway.app/*",
+    "https://web.whatsapp.com/*"
+  ],
+  "builtAt": "2026-11-27T23:06:30.877Z"
+}

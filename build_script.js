@@ -71,6 +71,64 @@ const versionInfo = { buildId: `build-${Date.now()}` };
 fs.writeFileSync(path.join(publicPath, 'version.json'), JSON.stringify(versionInfo, null, 2), 'utf8');
 console.log(`✨ Generated version metadata with buildId: ${versionInfo.buildId}`);
 
+// 4.6. Auto-package Chrome Extension ZIP into backend/public/downloads/ for 1-click multi-laptop install
+const extSourceDir = path.join(__dirname, 'shopify-cs-tagger-extension');
+const extManifestPath = path.join(extSourceDir, 'manifest.json');
+if (fs.existsSync(extManifestPath)) {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(extManifestPath, 'utf8'));
+    const extVersion = manifest.version || '1.0.0';
+    const extName = manifest.name || 'Trace ERP Chrome Extension';
+    const extDesc = manifest.description || '';
+    const downloadsDir = path.join(publicPath, 'downloads');
+    fs.mkdirSync(downloadsDir, { recursive: true });
+
+    const folderSlug = `trace-erp-extension-v${extVersion}`;
+    const versionedFilename = `${folderSlug}.zip`;
+    const versionedZipPath = path.join(downloadsDir, versionedFilename);
+    const latestZipPath = path.join(downloadsDir, 'trace-erp-extension-latest.zip');
+
+    // Stage clean copy without macOS junk (.DS_Store) inside a clean top-level folder
+    const tmpStageRoot = path.join(__dirname, '.tmp_ext_stage');
+    const tmpStageFolder = path.join(tmpStageRoot, folderSlug);
+    if (fs.existsSync(tmpStageRoot)) fs.rmSync(tmpStageRoot, { recursive: true, force: true });
+    fs.mkdirSync(tmpStageFolder, { recursive: true });
+
+    const bundledFiles = [];
+    for (const entry of fs.readdirSync(extSourceDir)) {
+      if (entry === '.DS_Store' || entry.startsWith('._')) continue;
+      const srcFile = path.join(extSourceDir, entry);
+      if (fs.statSync(srcFile).isFile()) {
+        fs.copyFileSync(srcFile, path.join(tmpStageFolder, entry));
+        bundledFiles.push(entry);
+      }
+    }
+
+    execSync(`cd "${tmpStageRoot}" && zip -rq "${versionedZipPath}" "${folderSlug}"`, { stdio: 'pipe' });
+    fs.copyFileSync(versionedZipPath, latestZipPath);
+    fs.rmSync(tmpStageRoot, { recursive: true, force: true });
+
+    const zipStat = fs.statSync(versionedZipPath);
+    const extMeta = {
+      name: extName,
+      version: extVersion,
+      description: extDesc,
+      filename: versionedFilename,
+      downloadUrl: `/downloads/${versionedFilename}`,
+      latestUrl: '/downloads/trace-erp-extension-latest.zip',
+      sizeBytes: zipStat.size,
+      fileCount: bundledFiles.length,
+      files: bundledFiles.sort(),
+      hostPermissions: manifest.host_permissions || [],
+      builtAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(path.join(downloadsDir, 'extension-meta.json'), JSON.stringify(extMeta, null, 2), 'utf8');
+    console.log(`🧩 Packaged Chrome Extension v${extVersion} (${zipStat.size} bytes) -> /downloads/${versionedFilename}`);
+  } catch (extErr) {
+    console.warn('⚠️ Failed to package Chrome Extension ZIP:', extErr.message);
+  }
+}
+
 // 5. Final Sanity Check
 const finalAssetsPath = path.join(publicPath, 'assets');
 if (fs.existsSync(finalAssetsPath)) {

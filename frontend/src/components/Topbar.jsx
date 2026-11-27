@@ -505,6 +505,31 @@ export default function Topbar() {
             </button>
           )}
 
+          {/* 🧩 CHROME EXTENSION DOWNLOAD SHORTCUT */}
+          <Link
+            to="/setup-guide?tab=extension"
+            className="btn btn-secondary btn-sm"
+            title="Download Updated Chrome Extension ZIP & Install Guide"
+            style={{
+              height: 38,
+              borderRadius: 20,
+              padding: '0 12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              textDecoration: 'none',
+              background: location.pathname === '/setup-guide' && location.search.includes('extension')
+                ? 'rgba(16, 185, 129, 0.16)'
+                : 'rgba(255,255,255,0.05)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-secondary)'
+            }}
+          >
+            <span>🧩</span> Extension
+          </Link>
+
           {/* ⌨️ KEYBOARD SHORTCUTS BUTTON */}
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('toggle-keyboard-shortcuts'))}
