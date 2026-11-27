@@ -12,13 +12,48 @@ const { broadcast } = require('../sse');
  */
 
 /**
+ * Returns Set of product_cost_id values that have unpushed ERP stock changes
+ * (PO_RECEIVE / PO_RECOUNT_SET / PO_EDIT / MANUAL_ADJUST / PO_REVERSE with shopify_pushed=0
+ * newer than the last successful Shopify push).
+ * Protects "ERP = Inventory Boss" local counts from being overwritten by Shopify background sync.
+ */
+function getUnpushedErpSkuIds(storeId) {
+  const protectedIds = new Set();
+  try {
+    const rows = db.prepare(`
+      SELECT DISTINCT il.product_cost_id
+      FROM inventory_ledger il
+      WHERE il.store_id = ?
+        AND il.product_cost_id IS NOT NULL
+        AND il.shopify_pushed = 0
+        AND il.movement_type IN ('PO_RECEIVE', 'PO_RECOUNT_SET', 'PO_EDIT', 'MANUAL_ADJUST', 'PO_REVERSE')
+        AND il.id > COALESCE((
+          SELECT MAX(il2.id)
+          FROM inventory_ledger il2
+          WHERE il2.store_id = il.store_id
+            AND il2.product_cost_id = il.product_cost_id
+            AND il2.shopify_pushed = 1
+        ), 0)
+    `).all(Number(storeId) || 1);
+    for (const r of rows) {
+      if (r.product_cost_id) protectedIds.add(Number(r.product_cost_id));
+    }
+  } catch (_) {
+    // Safe fallback if inventory_ledger does not exist yet
+  }
+  return protectedIds;
+}
+
+/**
  * Upsert a list of variant cost objects into product_master_costs
  */
-function upsertVariantCosts(storeId, variants) {
+function upsertVariantCosts(storeId, variants, options = {}) {
   if (!Array.isArray(variants) || variants.length === 0) return 0;
 
+  const protectedIds = options.forceOverwriteStock ? new Set() : getUnpushedErpSkuIds(storeId);
+
   const selectStmt = db.prepare(`
-    SELECT id, unit_cost, shopify_cost, selling_price 
+    SELECT id, unit_cost, shopify_cost, selling_price, inventory_qty, on_hand_qty, committed_qty
     FROM product_master_costs 
     WHERE store_id = ? 
     AND (
@@ -75,6 +110,7 @@ function upsertVariantCosts(storeId, variants) {
   `);
 
   let modifiedCount = 0;
+  let protectedCount = 0;
   db.transaction(() => {
     for (const v of variants) {
       const variantId = v.shopify_variant_id ? String(v.shopify_variant_id) : '';
@@ -100,7 +136,18 @@ function upsertVariantCosts(storeId, variants) {
       const existing = selectStmt.get(Number(storeId), qVar1, qVar2, qSku, pName, vName, qVar1, qVar2, qSku);
 
       if (existing) {
-        updateStmt.run(gidVariantId || variantId, sku, sku, pName, vName, cost, price, qty, committedQty, onHandQty, incomingQty, img, status, policy, existing.id);
+        let finalQty = qty;
+        let finalOnHand = onHandQty;
+        if (protectedIds.has(Number(existing.id))) {
+          // ERP Boss Shield: keep unpushed local On-Hand intact, only refresh live Committed from Shopify!
+          const erpOnHand = existing.on_hand_qty !== null && existing.on_hand_qty !== undefined
+            ? parseInt(existing.on_hand_qty, 10)
+            : ((parseInt(existing.inventory_qty, 10) || 0) + (parseInt(existing.committed_qty, 10) || 0));
+          finalOnHand = erpOnHand;
+          finalQty = erpOnHand - committedQty;
+          protectedCount++;
+        }
+        updateStmt.run(gidVariantId || variantId, sku, sku, pName, vName, cost, price, finalQty, committedQty, finalOnHand, incomingQty, img, status, policy, existing.id);
       } else {
         insertStmt.run(Number(storeId), gidVariantId || variantId, sku, pName, vName, cost, price, qty, committedQty, onHandQty, incomingQty, img, policy, status);
       }
@@ -108,6 +155,9 @@ function upsertVariantCosts(storeId, variants) {
     }
   })();
 
+  if (protectedCount > 0) {
+    console.log(`🛡️ [ERP Boss Shield] Protected ${protectedCount} unpushed SKU(s) on Store #${storeId} from Shopify stock overwrite.`);
+  }
   return modifiedCount;
 }
 
@@ -222,6 +272,8 @@ function getLastSyncStatus(storeId) {
 }
 
 module.exports = {
+  getUnpushedErpSkuIds,
+  upsertVariantCosts,
   syncSingleProductCosts,
   syncFullCatalog,
   getLastSyncStatus,

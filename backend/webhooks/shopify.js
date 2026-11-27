@@ -79,6 +79,9 @@ function processProductUpdateForCosts(storeId, payload) {
     const parentTitle = payload.title;
     if (!parentTitle || variants.length === 0) return;
 
+    const { getUnpushedErpSkuIds } = require('../services/costSyncService');
+    const protectedIds = getUnpushedErpSkuIds(storeId);
+
     for (const v of variants) {
       const variantTitle = v.title === 'Default Title' ? '' : (v.title || '');
       const newSku = v.sku ? String(v.sku).trim() : '';
@@ -100,7 +103,7 @@ function processProductUpdateForCosts(storeId, payload) {
 
       // Find existing row
       const existing = db.prepare(`
-        SELECT id, unit_cost, shopify_cost, selling_price
+        SELECT id, unit_cost, shopify_cost, selling_price, inventory_qty
         FROM product_master_costs
         WHERE store_id = ? AND (
           shopify_variant_id = ? OR shopify_variant_id = ? OR
@@ -109,7 +112,8 @@ function processProductUpdateForCosts(storeId, payload) {
       `).get(Number(storeId), String(v.id), gid, parentTitle, variantTitle);
 
       if (existing) {
-        // Update SKU, title, selling_price, image, status, policy, qty — but preserve unit_cost
+        // Update SKU, title, selling_price, image, status, policy — preserve unit_cost & unpushed ERP stock
+        const finalQty = protectedIds.has(Number(existing.id)) ? existing.inventory_qty : newQty;
         db.prepare(`
           UPDATE product_master_costs SET
             shopify_variant_id = COALESCE(shopify_variant_id, ?),
@@ -123,7 +127,7 @@ function processProductUpdateForCosts(storeId, payload) {
             inventory_policy = ?,
             updated_at = datetime('now')
           WHERE id = ?
-        `).run(gid, newSku, parentTitle, variantTitle, newPrice, newQty, imageUrl || null, status, v.inventory_policy || 'deny', existing.id);
+        `).run(gid, newSku, parentTitle, variantTitle, newPrice, finalQty, imageUrl || null, status, v.inventory_policy || 'deny', existing.id);
 
         console.log(`🔔 [Webhook] Updated SKU '${newSku}'/price/image/status for "${parentTitle} - ${variantTitle}" → Rs ${newPrice}`);
       } else {
