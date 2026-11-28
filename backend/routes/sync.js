@@ -5,16 +5,26 @@ const { broadcast } = require('../sse');
 const fs = require('fs');
 const path = require('path');
 
-// Get sync history (last 3 days)
+const { recordSyncEvent, listSyncHistory } = require('../services/syncHistoryService');
+
+// Get sync history (last 3 days) — optional ?store_id= filter
 router.get('/history', (req, res) => {
   try {
-    const logs = db.prepare(`
-      SELECT * FROM sync_history 
-      WHERE created_at >= datetime('now', '+5 hours', '-3 days') 
-      ORDER BY created_at DESC 
-      LIMIT 50
-    `).all();
+    const storeId = req.query.store_id ? parseInt(req.query.store_id, 10) : null;
+    const logs = listSyncHistory({ storeId, limit: req.query.limit || 60 });
     res.json(logs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/sync/history — Admin-only clear sync history
+router.delete('/history', (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  try {
+    db.prepare('DELETE FROM sync_history').run();
+    broadcast('sync_history_updated', { cleared: true });
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -179,22 +189,99 @@ router.post('/start', async (req, res) => {
     if (type === 'Shopify Sync' || (type && type.toLowerCase().includes('shopify'))) {
       if (order_number) {
         await syncOrderByNumber(store, order_number);
+        recordSyncEvent({
+          storeId: store.id,
+          storeName: store.store_name || store.shop_domain,
+          type: 'Shopify Order Sync',
+          category: 'shopify',
+          total: 1,
+          success: 1,
+          failed: 0,
+          summary: `Synced order ${order_number}`
+        });
         return res.json({ success: true, message: `Synced Shopify order ${order_number}` });
       }
       
-      // Run sync in background and notify frontend via SSE upon completion
-      fetchShopifyOrders(store, null, { forceDeepSync: mode === 'full' }).then(result => {
-        console.log(`[SyncRoute] Shopify order sync complete for ${store.shop_domain}:`, result);
-        try { broadcast('order_updated', { storeId: store.id }); } catch (e) {}
-      }).catch(err => {
-        console.error(`[SyncRoute] Shopify order sync error:`, err.message);
-      });
+      // Run sync in background and notify frontend via SSE + Sync History upon completion
+      const { refreshShopifyUpdates } = require('../engines/shopify');
+      (async () => {
+        try {
+          const r1 = await fetchShopifyOrders(store, null, { forceDeepSync: mode === 'full' });
+          const r2 = await refreshShopifyUpdates(store);
+          const added = Number(r1?.added || 0);
+          const updated = Number(r2?.updated || 0);
+          const failed = Number(r1?.failed || 0);
+          recordSyncEvent({
+            storeId: store.id,
+            storeName: store.store_name || store.shop_domain,
+            type: mode === 'full' ? 'Shopify Full Sync' : 'Shopify Sync',
+            category: 'shopify',
+            total: Number(r1?.total || added + updated),
+            success: added + updated,
+            failed,
+            summary: `${added} new, ${updated} refreshed`,
+            details: r1?.logs || []
+          });
+          console.log(`[SyncRoute] Shopify order sync complete for ${store.shop_domain}: added=${added}, updated=${updated}`);
+          try { broadcast('order_updated', { storeId: store.id }); } catch (e) {}
+        } catch (err) {
+          console.error(`[SyncRoute] Shopify order sync error:`, err.message);
+          recordSyncEvent({
+            storeId: store.id,
+            storeName: store.store_name || store.shop_domain,
+            type: 'Shopify Sync',
+            category: 'shopify',
+            total: 1,
+            success: 0,
+            failed: 1,
+            summary: err.message,
+            details: [{ id: store.shop_domain, status: 'FAILED', message: err.message }]
+          });
+        }
+      })();
 
       return res.json({ success: true, message: '🛒 Shopify Order Sync initiated! Fetching latest orders...' });
     } else {
-      // Courier Sync
-      syncPostEx(store).catch(e => console.error('PostEx sync err:', e.message));
-      syncInstaworld(store).catch(e => console.error('Instaworld sync err:', e.message));
+      // Courier Sync (PostEx + Instaworld)
+      (async () => {
+        let total = 0, success = 0, failed = 0;
+        const details = [];
+        try {
+          if (store.postex_token) {
+            const pRes = await syncPostEx(store);
+            total += Number(pRes?.total || 0);
+            success += Number(pRes?.updated || 0);
+            failed += Number(pRes?.failed || 0);
+            if (Array.isArray(pRes?.logs)) details.push(...pRes.logs);
+          }
+        } catch (e) {
+          failed++;
+          details.push({ id: 'PostEx', status: 'FAILED', message: e.message });
+        }
+        try {
+          if (store.instaworld_key || store.instaworld_key_backup || store.instaworld_key_3) {
+            const iRes = await syncInstaworld(store);
+            total += Number(iRes?.total || 0);
+            success += Number(iRes?.updated || 0);
+            failed += Number(iRes?.failed || 0);
+            if (Array.isArray(iRes?.logs)) details.push(...iRes.logs);
+          }
+        } catch (e) {
+          failed++;
+          details.push({ id: 'Instaworld', status: 'FAILED', message: e.message });
+        }
+        recordSyncEvent({
+          storeId: store.id,
+          storeName: store.store_name || store.shop_domain,
+          type: 'Courier Tracking Sync',
+          category: 'courier',
+          total,
+          success,
+          failed,
+          summary: `${success} tracking updates`,
+          details
+        });
+      })();
       return res.json({ success: true, message: '🚚 Courier tracking sync initiated in background!' });
     }
   } catch (error) {

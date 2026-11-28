@@ -112,17 +112,32 @@ router.post('/trigger/:id', async (req, res) => {
                 const tenantContext = require('../tenant-context');
                 await tenantContext.run(tenantId, async () => {
                     updateProgress('Initializing connection...', 0, 100);
+                    let syncRes = null;
                     if (schedule.courier === 'PostEx') {
-                        await syncPostEx(store, schedule.sync_type, (stage, processed, total, currentOrder) => {
+                        syncRes = await syncPostEx(store, schedule.sync_type, (stage, processed, total, currentOrder) => {
                             updateProgress(stage, processed, total, currentOrder);
                         });
                     } else {
-                        await syncInstaworld(store, schedule.sync_type, (stage, processed, total, currentOrder) => {
+                        syncRes = await syncInstaworld(store, schedule.sync_type, (stage, processed, total, currentOrder) => {
                             updateProgress(stage, processed, total, currentOrder);
                         });
                     }
                     updateProgress('Sync Complete', 100, 100);
                     db.prepare("UPDATE sync_schedules SET last_run_at = datetime('now') WHERE id = ?").run(id);
+                    try {
+                        const { recordSyncEvent } = require('../services/syncHistoryService');
+                        recordSyncEvent({
+                            storeId,
+                            storeName: store.store_name || store.shop_domain,
+                            type: `${schedule.courier} Sync (${schedule.sync_type})`,
+                            category: 'courier',
+                            total: Number(syncRes?.total || 0),
+                            success: Number(syncRes?.updated || 0),
+                            failed: Number(syncRes?.failed || 0),
+                            summary: `${syncRes?.updated || 0} updated`,
+                            details: syncRes?.logs || []
+                        });
+                    } catch (_) {}
                 });
             } catch (err) {
                 console.error(`Error during manual scheduler trigger for schedule #${id}:`, err.message);

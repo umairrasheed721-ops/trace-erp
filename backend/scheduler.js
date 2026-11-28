@@ -9,6 +9,7 @@ try { ({ runSniperScan } = require('./engines/sniper')); } catch (_) {}
 const tenantContext = require('./tenant-context');
 const fs = require('fs');
 const { sendReviewRequestEmail } = require('./services/reviewEmailService');
+const { recordSyncEvent } = require('./services/syncHistoryService');
 
 function getAllTenants() {
   const tenants = ['default'];
@@ -89,13 +90,34 @@ async function runDynamicScheduler() {
           const stores = db.prepare("SELECT * FROM stores").all();
           for (const store of stores) {
             try {
-              if (s.courier === 'PostEx') {
-                await syncPostEx(store, s.sync_type);
-              } else {
-                await syncInstaworld(store, s.sync_type);
-              }
+              const res = s.courier === 'PostEx'
+                ? await syncPostEx(store, s.sync_type)
+                : await syncInstaworld(store, s.sync_type);
+              recordSyncEvent({
+                storeId: store.id,
+                storeName: store.store_name || store.shop_domain,
+                type: `${s.courier} Auto-Sync`,
+                category: 'courier',
+                total: Number(res?.total || 0),
+                success: Number(res?.updated || 0),
+                failed: Number(res?.failed || 0),
+                summary: `${res?.updated || 0} updated (${s.sync_type})`,
+                details: res?.logs || [],
+                onlyIfNonEmpty: true
+              });
             } catch (e) {
               console.error(`Error in dynamic sync for ${s.courier} (Tenant: ${tenantId}):`, e.message);
+              recordSyncEvent({
+                storeId: store.id,
+                storeName: store.store_name || store.shop_domain,
+                type: `${s.courier} Auto-Sync`,
+                category: 'courier',
+                total: 1,
+                success: 0,
+                failed: 1,
+                summary: e.message,
+                details: [{ id: s.courier, status: 'FAILED', message: e.message }]
+              });
             }
           }
         }
@@ -227,6 +249,19 @@ async function sendReviewEmails(daysWindow = 7, targetStoreId = null) {
       }
     }
 
+    if (totalSent > 0 || totalFailed > 0) {
+      recordSyncEvent({
+        storeId: isManualSingleStore ? Number(targetStoreId) : null,
+        type: 'Review Request Emails',
+        category: 'email',
+        total: totalProcessed,
+        success: totalSent,
+        failed: totalFailed,
+        summary: `${totalSent} sent${totalFailed > 0 ? `, ${totalFailed} failed` : ''}`,
+        details: lastError ? [{ id: 'Email', status: 'FAILED', message: lastError }] : []
+      });
+    }
+
     return { success: true, processed: totalProcessed, sent: totalSent, failed: totalFailed, lastError, provider: lastProviderLabel };
   } catch (e) {
     console.error('[Review Email Scan] Error:', e.message);
@@ -249,7 +284,20 @@ module.exports = function schedulerInit() {
         for (const store of stores) {
           try {
             console.log(`[Shopify Poll] Fetching orders for store ${store.shop_domain} (Tenant: ${tenantId})...`);
-            await fetchShopifyOrders(store);
+            const r = await fetchShopifyOrders(store);
+            if ((r?.added || 0) > 0 || (r?.failed || 0) > 0) {
+              recordSyncEvent({
+                storeId: store.id,
+                storeName: store.store_name || store.shop_domain,
+                type: 'Shopify New Orders',
+                category: 'shopify',
+                total: Number(r?.total || r?.added || 0),
+                success: Number(r?.added || 0),
+                failed: Number(r?.failed || 0),
+                summary: `${r?.added || 0} new order(s) ingested`,
+                details: r?.logs || []
+              });
+            }
           } catch (e) {
             console.error(`[Shopify Poll Error] for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message);
           }
@@ -279,7 +327,32 @@ module.exports = function schedulerInit() {
       try {
         const stores = db.prepare("SELECT * FROM stores").all();
         for (const store of stores) {
-          try { await refreshShopifyUpdates(store, null, { deepReconcile: true }); } catch (e) { console.error(`[CRON] Deep reconcile error for store ${store.shop_domain}:`, e.message); }
+          try {
+            const r = await refreshShopifyUpdates(store, null, { deepReconcile: true });
+            recordSyncEvent({
+              storeId: store.id,
+              storeName: store.store_name || store.shop_domain,
+              type: 'Nightly Shopify Reconcile',
+              category: 'shopify',
+              total: Number(r?.updated || 0),
+              success: Number(r?.updated || 0),
+              failed: 0,
+              summary: `7-day lookback: ${r?.updated || 0} orders checked`
+            });
+          } catch (e) {
+            console.error(`[CRON] Deep reconcile error for store ${store.shop_domain}:`, e.message);
+            recordSyncEvent({
+              storeId: store.id,
+              storeName: store.store_name || store.shop_domain,
+              type: 'Nightly Shopify Reconcile',
+              category: 'shopify',
+              total: 1,
+              success: 0,
+              failed: 1,
+              summary: e.message,
+              details: [{ id: store.shop_domain, status: 'FAILED', message: e.message }]
+            });
+          }
         }
       } catch (err) {}
     });
@@ -519,6 +592,14 @@ module.exports = function schedulerInit() {
         const res = await processRemarketingDripQueue(null, 12);
         if (res.sent > 0 || res.failed > 0) {
           console.log(`📨 [CRON] Remarketing Auto-Drip (Tenant: ${tenantId}): sent=${res.sent}, failed=${res.failed}`);
+          recordSyncEvent({
+            type: 'Remarketing Auto-Drip',
+            category: 'email',
+            total: (res.sent || 0) + (res.failed || 0),
+            success: res.sent || 0,
+            failed: res.failed || 0,
+            summary: `${res.sent || 0} email(s) sent`
+          });
         }
       } catch (e) {
         console.error(`[Remarketing Drip Cron Error] (Tenant: ${tenantId}):`, e.message);

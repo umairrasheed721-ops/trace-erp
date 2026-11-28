@@ -13,6 +13,10 @@ export default function Topbar() {
   const isCommandCenter = location.pathname === '/search'
   
   const [showNotifications, setShowNotifications] = useState(false)
+  const [notifFilter, setNotifFilter] = useState('all') // 'all' | 'errors' | 'store'
+  const [expandedLogId, setExpandedLogId] = useState(null)
+  const [quickSyncBusy, setQuickSyncBusy] = useState('')
+  const [seenSyncId, setSeenSyncId] = useState(() => Number(localStorage.getItem('trace_seen_sync_id') || 0))
   const notificationRef = useRef(null)
 
   const [showStoreDropdown, setShowStoreDropdown] = useState(false)
@@ -169,7 +173,97 @@ export default function Topbar() {
     }
   }
 
-  const hasErrors = Array.isArray(syncHistory) && syncHistory.some(log => log.failed > 0)
+  const safeHistory = Array.isArray(syncHistory) ? syncHistory : [];
+  const latestSyncId = safeHistory[0]?.id || 0;
+  const unreadLogs = safeHistory.filter(l => Number(l.id) > seenSyncId);
+  const unreadErrorCount = unreadLogs.filter(l => Number(l.failed) > 0).length;
+  const unreadCount = unreadLogs.length;
+  const totalErrorCount = safeHistory.filter(l => Number(l.failed) > 0).length;
+  const thisStoreLogs = safeHistory.filter(l => !l.store_id || Number(l.store_id) === Number(activeStoreId));
+
+  const visibleHistory = notifFilter === 'errors'
+    ? safeHistory.filter(l => Number(l.failed) > 0)
+    : notifFilter === 'store'
+    ? thisStoreLogs
+    : safeHistory;
+
+  const toggleNotifications = () => {
+    const next = !showNotifications;
+    setShowNotifications(next);
+    if (next) {
+      fetchSyncHistory();
+      if (latestSyncId > seenSyncId) {
+        setSeenSyncId(latestSyncId);
+        localStorage.setItem('trace_seen_sync_id', String(latestSyncId));
+      }
+    }
+  };
+
+  const triggerQuickSync = async (kind) => {
+    if (!activeStoreId || quickSyncBusy) return;
+    setQuickSyncBusy(kind);
+    try {
+      const token = localStorage.getItem('trace_token') || '';
+      const res = await fetch('/api/sync/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ store_id: activeStoreId, type: kind === 'shopify' ? 'Shopify Sync' : 'Courier Sync' })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Sync failed');
+      addToast(data.message || '🔄 Sync started in background', 'success');
+      setTimeout(() => fetchSyncHistory(), 3500);
+    } catch (e) {
+      addToast(`❌ ${e.message}`, 'error');
+    } finally {
+      setQuickSyncBusy('');
+    }
+  };
+
+  const clearSyncHistory = async () => {
+    if (!window.confirm('Clear all sync activity logs?')) return;
+    try {
+      const token = localStorage.getItem('trace_token') || '';
+      const res = await fetch('/api/sync/history', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchSyncHistory();
+        addToast('🧹 Sync history cleared', 'info');
+      }
+    } catch (_) {}
+  };
+
+  const getCategoryIcon = (cat, type) => {
+    const c = String(cat || '').toLowerCase();
+    const t = String(type || '').toLowerCase();
+    if (c === 'booking' || t.includes('book') || t.includes('cancel')) return '📦';
+    if (c === 'courier' || t.includes('postex') || t.includes('insta') || t.includes('courier')) return '🚚';
+    if (c === 'catalog' || t.includes('catalog') || t.includes('cost')) return '🏷️';
+    if (c === 'tags' || t.includes('ready to book')) return '📋';
+    if (c === 'email' || t.includes('email') || t.includes('drip')) return '📧';
+    if (c === 'finance' || t.includes('payout')) return '💰';
+    if (c === 'shopify' || t.includes('shopify')) return '🛒';
+    return '⚡';
+  };
+
+  const formatSyncTimestamp = (raw) => {
+    if (!raw) return '';
+    // SQLite sync_history timestamps are stored in PKT ('YYYY-MM-DD HH:MM:SS')
+    const iso = String(raw).includes('T') ? raw : String(raw).replace(' ', 'T') + '+05:00';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(raw).slice(0, 16);
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    const yest = new Date(now);
+    yest.setDate(now.getDate() - 1);
+    const isYest = d.toDateString() === yest.toDateString();
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (sameDay) return `Today · ${timeStr}`;
+    if (isYest) return `Yesterday · ${timeStr}`;
+    return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} · ${timeStr}`;
+  };
 
   return (
     <header className="topbar" style={{ borderBottom: 'none' }}>
@@ -403,66 +497,266 @@ export default function Topbar() {
 
         <div className="topbar-actions" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
 
-          {/* 🔔 NOTIFICATION HUB */}
+          {/* 🔔 SYNC & ACTIVITY NOTIFICATION HUB */}
           <div style={{ position: 'relative' }} ref={notificationRef}>
             <button 
-              onClick={() => setShowNotifications(!showNotifications)}
+              onClick={toggleNotifications}
               className="btn btn-secondary btn-sm"
+              title="Sync & Activity Center (Last 3 Days)"
               style={{ 
                 width: 38, height: 38, borderRadius: '50%', padding: 0, position: 'relative',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)'
+                background: showNotifications ? 'rgba(99, 102, 241, 0.14)' : 'var(--bg-elevated)',
+                border: showNotifications ? '1px solid var(--brand)' : '1px solid var(--border-bright)'
               }}
             >
-              <span style={{ fontSize: '1.2rem' }}>🔔</span>
-              <span style={{ 
-                position: 'absolute', top: -2, right: -2, width: 12, height: 12, 
-                background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--bg-elevated)',
-                boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)',
-                display: hasErrors ? 'block' : 'none'
-              }}></span>
+              <span style={{ fontSize: '1.15rem' }}>🔔</span>
+              {(unreadErrorCount > 0 || unreadCount > 0) && (
+                <span style={{
+                  position: 'absolute', top: -4, right: -4,
+                  minWidth: 18, height: 18, padding: '0 4px',
+                  borderRadius: 999,
+                  background: unreadErrorCount > 0 ? '#ef4444' : '#6366f1',
+                  color: '#fff',
+                  fontSize: '0.62rem',
+                  fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: '2px solid var(--bg-surface)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.25)'
+                }}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </button>
 
+            {showNotifications && (
               <div style={{
-                position: 'absolute', top: '120%', right: 0, width: 320, 
-                background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-                borderRadius: 12, boxShadow: '0 10px 25px rgba(0,0,0,0.3)', zIndex: 1000,
-                maxHeight: 450, overflowY: 'auto', padding: 15,
-                display: showNotifications ? 'block' : 'none'
+                position: 'absolute', top: 'calc(100% + 10px)', right: 0, width: 400, maxWidth: '92vw',
+                background: 'var(--bg-surface)', border: '1px solid var(--border-bright)',
+                borderRadius: 16, boxShadow: '0 18px 42px rgba(0,0,0,0.28)', zIndex: 1000,
+                display: 'flex', flexDirection: 'column', overflow: 'hidden'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' }}>
-                  <h4 style={{ margin: 0, fontSize: '0.9rem' }}>Sync History (3d)</h4>
-                  <button onClick={fetchSyncHistory} style={{ fontSize: '0.7rem', background: 'none', border: 'none', color: 'var(--brand)', cursor: 'pointer' }}>Refresh</button>
-                </div>
-                
-                {syncHistory.length === 0 ? (
-                  <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20, fontSize: '0.8rem' }}>No recent sync logs</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {syncHistory.map(log => (
-                      <div key={log.id} style={{ 
-                        padding: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 8,
-                        borderLeft: `3px solid ${log.failed > 0 ? 'var(--red)' : 'var(--green)'}`
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 600, marginBottom: 4 }}>
-                          <span>{log.type}</span>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-                          ✅ {log.success} Success | {log.failed > 0 ? <span style={{ color: 'var(--red)' }}>❌ {log.failed} Failed</span> : '🎉 0 Failed'}
-                        </div>
-                        <button
-                          onClick={() => downloadAuditReport(log.id, log.type)}
-                          className="btn btn-primary btn-sm" 
-                          style={{ width: '100%', fontSize: '0.7rem', padding: '4px 0', cursor: 'pointer', marginTop: 4 }}
-                        >
-                          📊 Download Report
-                        </button>
-                      </div>
-                    ))}
+                {/* Header */}
+                <div style={{
+                  padding: '13px 16px',
+                  borderBottom: '1px solid var(--border)',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+                  background: 'var(--bg-elevated)'
+                }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      🔔 Sync &amp; Activity (3d)
+                    </h4>
+                    <span style={{ fontSize: '0.69rem', color: 'var(--text-muted)' }}>
+                      Live Shopify, Courier, Bulk &amp; Automation feed
+                    </span>
                   </div>
-                )}
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={fetchSyncHistory}
+                      style={{ fontSize: '0.72rem', fontWeight: 700, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 7, padding: '4px 8px', color: 'var(--brand)', cursor: 'pointer' }}
+                    >
+                      🔄 Refresh
+                    </button>
+                    {isAdmin && safeHistory.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={clearSyncHistory}
+                        title="Clear Sync History"
+                        style={{ fontSize: '0.7rem', fontWeight: 700, background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '4px 7px', color: 'var(--text-muted)', cursor: 'pointer' }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Filter Tabs + Quick Sync Strip */}
+                <div style={{
+                  padding: '9px 14px',
+                  borderBottom: '1px solid var(--border)',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, flexWrap: 'wrap'
+                }}>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {[
+                      { id: 'all', label: `All (${safeHistory.length})` },
+                      { id: 'store', label: `Store (${thisStoreLogs.length})` },
+                      { id: 'errors', label: `Errors (${totalErrorCount})` }
+                    ].map(tab => {
+                      const active = notifFilter === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setNotifFilter(tab.id)}
+                          style={{
+                            fontSize: '0.7rem', fontWeight: 700,
+                            padding: '4px 9px', borderRadius: 999, cursor: 'pointer',
+                            border: `1px solid ${active ? '#6366f1' : 'var(--border)'}`,
+                            background: active ? 'rgba(99,102,241,0.14)' : 'var(--bg-elevated)',
+                            color: active ? '#6366f1' : (tab.id === 'errors' && totalErrorCount > 0 ? '#dc2626' : 'var(--text-secondary)')
+                          }}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    <button
+                      type="button"
+                      disabled={Boolean(quickSyncBusy)}
+                      onClick={() => triggerQuickSync('shopify')}
+                      title="Sync active store orders from Shopify now"
+                      style={{ fontSize: '0.68rem', fontWeight: 700, padding: '4px 8px', borderRadius: 7, background: 'rgba(16,185,129,0.12)', color: '#059669', border: '1px solid rgba(16,185,129,0.3)', cursor: 'pointer' }}
+                    >
+                      {quickSyncBusy === 'shopify' ? '⏳' : '🛒 Sync'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(quickSyncBusy)}
+                      onClick={() => triggerQuickSync('courier')}
+                      title="Sync PostEx & Instaworld tracking for active store now"
+                      style={{ fontSize: '0.68rem', fontWeight: 700, padding: '4px 8px', borderRadius: 7, background: 'rgba(59,130,246,0.12)', color: '#2563eb', border: '1px solid rgba(59,130,246,0.3)', cursor: 'pointer' }}
+                    >
+                      {quickSyncBusy === 'courier' ? '⏳' : '🚚 Track'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Feed Body */}
+                <div style={{ maxHeight: 380, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {visibleHistory.length === 0 ? (
+                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '26px 14px', fontSize: '0.8rem' }}>
+                      <div style={{ fontSize: '1.5rem', marginBottom: 6 }}>📭</div>
+                      <div style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        {notifFilter === 'errors' ? 'Zero failed syncs in the last 3 days!' : 'No sync activity yet'}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', marginTop: 4 }}>
+                        Click <strong>🛒 Sync</strong> or <strong>🚚 Track</strong> above, or wait for automated jobs.
+                      </div>
+                    </div>
+                  ) : (
+                    visibleHistory.map(log => {
+                      const hasFailed = Number(log.failed) > 0;
+                      const isExpanded = expandedLogId === log.id;
+                      const previewList = Array.isArray(log.preview) ? log.preview : [];
+                      return (
+                        <div
+                          key={log.id}
+                          style={{
+                            padding: '10px 12px',
+                            background: 'var(--bg-elevated)',
+                            border: '1px solid var(--border)',
+                            borderLeft: `3px solid ${hasFailed ? '#ef4444' : '#10b981'}`,
+                            borderRadius: 10,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 5
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                              <span style={{ fontSize: '0.88rem' }}>{getCategoryIcon(log.category, log.type)}</span>
+                              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {log.type}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '0.67rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                              {formatSyncTimestamp(log.created_at)}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <div style={{ fontSize: '0.73rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              {log.store_name && (
+                                <span style={{
+                                  fontSize: '0.66rem', fontWeight: 700,
+                                  padding: '1px 6px', borderRadius: 999,
+                                  background: 'rgba(99,102,241,0.1)', color: '#6366f1'
+                                }}>
+                                  {log.store_name}
+                                </span>
+                              )}
+                              <span>✅ {log.success}</span>
+                              {hasFailed ? (
+                                <span style={{ color: '#dc2626', fontWeight: 700 }}>❌ {log.failed} Failed</span>
+                              ) : (
+                                <span style={{ color: '#059669' }}>· 0 Failed</span>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 5 }}>
+                              {previewList.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                                  style={{
+                                    fontSize: '0.67rem', fontWeight: 700, padding: '2px 7px', borderRadius: 6,
+                                    background: 'var(--bg-surface)', color: 'var(--text-primary)',
+                                    border: '1px solid var(--border-bright)', cursor: 'pointer'
+                                  }}
+                                >
+                                  {isExpanded ? 'Hide' : `Details (${log.details_count || previewList.length})`}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => downloadAuditReport(log.id, log.type)}
+                                style={{
+                                  fontSize: '0.67rem', fontWeight: 700, padding: '2px 7px', borderRadius: 6,
+                                  background: 'rgba(99,102,241,0.12)', color: '#6366f1',
+                                  border: '1px solid rgba(99,102,241,0.3)', cursor: 'pointer'
+                                }}
+                              >
+                                📊 CSV
+                              </button>
+                            </div>
+                          </div>
+
+                          {log.summary && (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.35 }}>
+                              {log.summary}
+                            </div>
+                          )}
+
+                          {isExpanded && previewList.length > 0 && (
+                            <div style={{
+                              marginTop: 4,
+                              padding: '7px 9px',
+                              borderRadius: 8,
+                              background: 'var(--bg-surface)',
+                              border: '1px solid var(--border)',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 4,
+                              fontSize: '0.7rem'
+                            }}>
+                              {previewList.map((item, i) => (
+                                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: item.status === 'FAILED' ? '#dc2626' : 'var(--text-primary)', flexShrink: 0 }}>
+                                    {item.id}
+                                  </span>
+                                  <span style={{ color: 'var(--text-secondary)', wordBreak: 'break-word' }}>
+                                    {item.message || item.status}
+                                  </span>
+                                </div>
+                              ))}
+                              {(log.details_count || 0) > previewList.length && (
+                                <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                  +{log.details_count - previewList.length} more rows — click 📊 CSV for full report.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
+            )}
           </div>
 
             <button 

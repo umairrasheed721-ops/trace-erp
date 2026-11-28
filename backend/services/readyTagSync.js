@@ -340,6 +340,19 @@ async function runHistoricalCleanup({ storeIds, days = 30, actor = 'ReadyTagClea
       console.error(`❌ [ReadyTagCleanup] Store ${store.shop_domain} failed:`, err.message);
     }
     summary.push({ store_id: store.id, shop_domain: store.shop_domain, removed, confirmed, failed });
+    try {
+      const { recordSyncEvent } = require('./syncHistoryService');
+      recordSyncEvent({
+        storeId: store.id,
+        storeName: store.store_name || store.shop_domain,
+        type: 'Ready to Book Tag Cleanup',
+        category: 'tags',
+        total: removed + confirmed + failed,
+        success: removed + confirmed,
+        failed,
+        summary: `${removed} stale tags removed, ${confirmed} auto-confirmed`
+      });
+    } catch (_) {}
     console.log(`✅ [ReadyTagCleanup] ${store.shop_domain} by ${actor}: removed ${removed}, confirmed ${confirmed}, failed ${failed}`);
   }
   return summary;

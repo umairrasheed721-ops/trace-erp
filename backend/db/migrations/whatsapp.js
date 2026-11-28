@@ -604,5 +604,19 @@ Please reply with:
     } catch (e) {
       // Column already exists
     }
+  },
+
+  // Upgrade sync_history with store context, category & summary (idempotent)
+  (db) => {
+    const cols = [
+      'ALTER TABLE sync_history ADD COLUMN store_id INTEGER DEFAULT NULL',
+      'ALTER TABLE sync_history ADD COLUMN store_name TEXT DEFAULT NULL',
+      "ALTER TABLE sync_history ADD COLUMN category TEXT DEFAULT 'sync'",
+      "ALTER TABLE sync_history ADD COLUMN summary TEXT DEFAULT ''"
+    ];
+    for (const sql of cols) {
+      try { db.exec(sql); } catch (_) {}
+    }
+    try { db.exec('CREATE INDEX IF NOT EXISTS idx_sync_history_created_at ON sync_history(created_at DESC)'); } catch (_) {}
   }
 ];

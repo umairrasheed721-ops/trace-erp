@@ -153,6 +153,19 @@ async function processBulkBooking(storeId, ids, courier) {
     failedOrders: failedOrders.slice(0, 50),
   };
   broadcast('sync_progress', { storeId, ...global.syncProgress[storeId] });
+  try {
+    const { recordSyncEvent } = require('../services/syncHistoryService');
+    recordSyncEvent({
+      storeId,
+      type: `Bulk Book (${courier})`,
+      category: 'booking',
+      total: ids.length,
+      success,
+      failed,
+      summary: `${success} booked${failed > 0 ? `, ${failed} failed` : ''}`,
+      details: failedOrders
+    });
+  } catch (_) {}
   setTimeout(() => { if (global.syncProgress) delete global.syncProgress[storeId]; }, 5000);
 }
 
@@ -228,6 +241,19 @@ router.post('/cancel', async (req, res) => {
     failedOrders: failedOrders.slice(0, 50),
   };
   broadcast('sync_progress', { storeId, ...global.syncProgress[storeId] });
+  try {
+    const { recordSyncEvent } = require('../services/syncHistoryService');
+    recordSyncEvent({
+      storeId,
+      type: 'Bulk Cancel Booking',
+      category: 'booking',
+      total: ids.length,
+      success,
+      failed,
+      summary: `${success} cancelled${failed > 0 ? `, ${failed} failed` : ''}`,
+      details: failedOrders
+    });
+  } catch (_) {}
   setTimeout(() => { if (global.syncProgress) delete global.syncProgress[storeId]; }, 5000);
 });
 

@@ -230,9 +230,35 @@ async function syncFullCatalog(storeId) {
     } catch (_) {}
 
     console.log(`✅ [Hybrid Full-Sync] Completed catalog sync for Store #${storeId}: ${totalSynced} variants processed.`);
+    try {
+      const { recordSyncEvent } = require('./syncHistoryService');
+      recordSyncEvent({
+        storeId: Number(storeId),
+        storeName: store.store_name || store.shop_domain,
+        type: 'Shopify Catalog & Cost Sync',
+        category: 'catalog',
+        total: totalSynced,
+        success: totalSynced,
+        failed: 0,
+        summary: `${totalSynced} variants synced`
+      });
+    } catch (_) {}
     return { success: true, count: totalSynced };
   } catch (err) {
     console.error(`❌ [costSyncService] syncFullCatalog failed for Store #${storeId}:`, err.message);
+    try {
+      const { recordSyncEvent } = require('./syncHistoryService');
+      recordSyncEvent({
+        storeId: Number(storeId),
+        type: 'Shopify Catalog & Cost Sync',
+        category: 'catalog',
+        total: 1,
+        success: 0,
+        failed: 1,
+        summary: err.message,
+        details: [{ id: `Store #${storeId}`, status: 'FAILED', message: err.message }]
+      });
+    } catch (_) {}
     return { success: false, error: err.message };
   }
 }
