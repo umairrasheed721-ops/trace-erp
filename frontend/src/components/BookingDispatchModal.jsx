@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   COURIER_REMARK_PRESETS,
   hasRemarkPhrase,
@@ -40,8 +41,8 @@ function SmartCitySelect({
     const spaceBelow = window.innerHeight - rect.bottom;
     const top = spaceBelow < dropHeight && rect.top > dropHeight
       ? Math.max(8, rect.top - dropHeight - 4)
-      : Math.min(window.innerHeight - 80, rect.bottom + 4);
-    const width = Math.max(245, rect.width + 50);
+      : Math.min(window.innerHeight - 120, rect.bottom + 4);
+    const width = Math.max(250, rect.width + 55);
     const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
     setPos({ top, left, width });
   };
@@ -61,11 +62,20 @@ function SmartCitySelect({
     document.addEventListener('mousedown', onOutside);
     document.addEventListener('keydown', onEsc);
     window.addEventListener('resize', updatePos);
-    setTimeout(() => searchInputRef.current?.focus(), 20);
+    window.addEventListener('scroll', updatePos, true);
+    const focusTimer = setTimeout(() => {
+      try {
+        searchInputRef.current?.focus({ preventScroll: true });
+      } catch (_) {
+        searchInputRef.current?.focus();
+      }
+    }, 20);
     return () => {
+      clearTimeout(focusTimer);
       document.removeEventListener('mousedown', onOutside);
       document.removeEventListener('keydown', onEsc);
       window.removeEventListener('resize', updatePos);
+      window.removeEventListener('scroll', updatePos, true);
     };
   }, [open]);
 
@@ -167,16 +177,17 @@ function SmartCitySelect({
         </span>
       )}
 
-      {open && (
+      {open && typeof document !== 'undefined' && createPortal(
         <div
           ref={popoverRef}
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             position: 'fixed',
             top: pos.top,
             left: pos.left,
             width: pos.width,
             maxHeight: 290,
-            zIndex: 10099,
+            zIndex: 99999,
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-bright)',
             borderRadius: 11,
@@ -288,7 +299,8 @@ function SmartCitySelect({
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
