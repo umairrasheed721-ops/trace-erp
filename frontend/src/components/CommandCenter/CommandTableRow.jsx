@@ -209,8 +209,8 @@ const CommandTableRow = React.memo(({
           </td>
         )
         if (col.id === 'edit') return (
-          <td key={col.id}>
-            <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
+          <td key={col.id} style={{ padding: '4px 8px', overflow: 'visible', whiteSpace: 'nowrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'nowrap' }}>
               {(o.cost <= 0) && (
                 <button
                   type="button"
@@ -223,12 +223,15 @@ const CommandTableRow = React.memo(({
                     background: 'var(--red)', 
                     color: '#fff', 
                     border: 'none',
-                    padding: '2px 5px', 
-                    borderRadius: 4, 
-                    fontSize: '0.62rem', 
+                    height: 24,
+                    padding: '0 5px', 
+                    borderRadius: 5, 
+                    fontSize: '0.64rem', 
                     fontWeight: 800,
                     cursor: 'pointer',
                     flexShrink: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
                   }}
                   title="ZERO COST BLOCK — Click to inspect order & heal cost"
                 >
@@ -247,7 +250,8 @@ const CommandTableRow = React.memo(({
                       onClick={() => handleConfirmOrder(o.id)}
                       title={o.cost <= 0 ? 'Zero Cost Block — click 🛑 to fix cost first' : 'Confirm Order & add "Ready to Book" tag on Shopify'}
                       style={{
-                        padding: '3px 9px',
+                        height: 26,
+                        padding: '0 9px',
                         fontSize: '0.72rem',
                         fontWeight: 700,
                         borderRadius: 6,
@@ -256,29 +260,37 @@ const CommandTableRow = React.memo(({
                         color: o.cost <= 0 ? 'var(--text-muted)' : '#059669',
                         cursor: o.cost <= 0 ? 'not-allowed' : 'pointer',
                         whiteSpace: 'nowrap',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        flexShrink: 0,
                       }}
                     >
                       ✅ Confirm
                     </button>
                   )}
 
-                  {/* Confirmed & Untracked: Courier Book Select + 1-Click Revert */}
+                  {/* Confirmed & Untracked: Compact Courier Book Select + 1-Click Revert */}
                   {!o.tracking_number && s === 'confirmed' && (
                     <>
                       <select
-                        className="btn btn-sm"
                         disabled={o.cost <= 0}
                         title={o.cost <= 0 ? 'Zero Cost Block — click 🛑 to fix cost first' : 'Select courier to book order'}
                         style={{
-                          padding: '3px 7px',
+                          height: 26,
+                          width: 82,
+                          minWidth: 78,
+                          maxWidth: 84,
+                          padding: '0 6px',
                           fontSize: '0.72rem',
                           fontWeight: 700,
-                          maxWidth: '108px',
                           background: o.cost <= 0 ? 'var(--bg-elevated)' : 'var(--brand)',
                           color: o.cost <= 0 ? 'var(--text-muted)' : '#fff',
-                          border: '1px solid var(--border)',
+                          border: '1px solid transparent',
                           borderRadius: 6,
                           cursor: o.cost <= 0 ? 'not-allowed' : 'pointer',
+                          outline: 'none',
+                          flexShrink: 0,
                         }}
                         value=""
                         onChange={(e) => {
@@ -312,15 +324,20 @@ const CommandTableRow = React.memo(({
                         onClick={() => handleRevertConfirm(o.id)}
                         title='Revert to Pending & remove "Ready to Book" tag on Shopify'
                         style={{
-                          padding: '3px 6px',
+                          height: 26,
+                          width: 26,
+                          padding: 0,
                           fontSize: '0.72rem',
                           fontWeight: 700,
                           borderRadius: 6,
-                          border: '1px solid rgba(245, 158, 11, 0.35)',
-                          background: 'rgba(245, 158, 11, 0.1)',
+                          border: '1px solid rgba(245, 158, 11, 0.4)',
+                          background: 'rgba(245, 158, 11, 0.12)',
                           color: '#d97706',
                           cursor: 'pointer',
                           flexShrink: 0,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                         }}
                       >
                         ↩️
@@ -335,7 +352,8 @@ const CommandTableRow = React.memo(({
                       onClick={() => handleCancelBooking(o.id)}
                       title="Cancel Courier Booking, Unfulfill Shopify & Reset to Pending"
                       style={{
-                        padding: '3px 8px',
+                        height: 26,
+                        padding: '0 8px',
                         fontSize: '0.71rem',
                         fontWeight: 700,
                         borderRadius: 6,
@@ -344,6 +362,9 @@ const CommandTableRow = React.memo(({
                         color: '#dc2626',
                         cursor: 'pointer',
                         whiteSpace: 'nowrap',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        flexShrink: 0,
                       }}
                     >
                       🛑 Cancel
@@ -356,15 +377,20 @@ const CommandTableRow = React.memo(({
                     onClick={() => onForceResync(o.id)}
                     title="Force Resync Order from Shopify"
                     style={{
-                      padding: '3px 6px',
-                      fontSize: '0.71rem',
+                      height: 26,
+                      width: 26,
+                      padding: 0,
+                      fontSize: '0.72rem',
                       fontWeight: 700,
                       borderRadius: 6,
-                      border: '1px solid var(--border)',
+                      border: '1px solid var(--border-bright)',
                       background: 'var(--bg-elevated)',
                       color: 'var(--text-secondary)',
                       cursor: 'pointer',
                       flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
                     🔄
@@ -478,11 +504,11 @@ const CommandTableRow = React.memo(({
           const phone = formattedPhone;
           const waPhone = formattedPhone ? formattedPhone.replace(/\D/g,'').replace(/^0/,'92') : '';
           return (
-            <td key={col.id} className="min-w-[200px] whitespace-nowrap shrink-0" style={{ fontSize: '0.75rem', width: 200, minWidth: 200, maxWidth: 200, overflow: 'visible' }}>
+            <td key={col.id} style={{ fontSize: '0.75rem', width: 185, minWidth: 185, maxWidth: 185, overflow: 'visible', whiteSpace: 'nowrap' }}>
               {formattedPhone ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%', overflow: 'visible' }}>
+                <div className="phone-container-wrap" style={{ display: 'flex', alignItems: 'center', gap: '5px', width: '100%', overflow: 'visible' }}>
                   {/* 📱 Manual Dispatch (Native App) Dropdown */}
-                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '22px', height: '22px', justifyContent: 'center', flexShrink: 0 }} title="📱 Manual Dispatch via WhatsApp App">
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '24px', height: '24px', justifyContent: 'center', flexShrink: 0 }} title="Send WhatsApp Template">
                     <select 
                       className="wa-template-select"
                       onClick={(e) => {
@@ -635,92 +661,87 @@ const CommandTableRow = React.memo(({
                     <span style={{ position: 'absolute', pointerEvents: 'none', fontSize: '0.6rem', color: '#25d366', fontWeight: 800 }}>💬</span>
                   </div>
 
-                  <div className="phone-container-wrap" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '28px', minHeight: '28px', maxHeight: '28px', overflow: 'visible' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', lineHeight: '13px' }}>
-                      <a 
-                        href={"tel:" + phone}
-                        onClick={() => setActiveRowId(o.id)}
-                        className="tabular-nums text-sm font-semibold hover:underline"
-                        style={{ 
-                          color: 'var(--text-primary)', 
-                          textDecoration: 'none', 
-                          fontSize: '0.75rem', 
-                          display: 'block',
-                          cursor: 'pointer'
-                        }}
-                        title="Click to initiate SIM Call"
-                      >
-                        {phone}
-                      </a>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          setActiveRowId(o.id);
-                          copyWithTooltip(phone, e);
-                          addToast('Phone number copied!', 'success');
-                        }}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          padding: '2px',
-                          cursor: 'pointer',
-                          color: 'var(--text-secondary)',
-                          opacity: 0,
-                          transition: 'opacity 0.15s ease, transform 0.15s ease',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderRadius: '4px',
-                        }}
-                        className="phone-copy-btn"
-                        title="Copy phone number"
-                      >
-                        <svg 
-                          width="10" 
-                          height="10" 
-                          viewBox="0 0 24 24" 
-                          fill="none" 
-                          stroke="currentColor" 
-                          strokeWidth="2.5" 
-                          strokeLinecap="round" 
-                          strokeLinejoin="round"
-                        >
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                        </svg>
-                      </button>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '1px', lineHeight: '13px' }}>
-                      <a 
-                        href={(localStorage.getItem('trace_use_wa_web') === 'true' ? "https://web.whatsapp.com/send" : "whatsapp://send") + "?phone=" + waPhone} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        onClick={() => setActiveRowId(o.id)} 
-                        className="phone-action-btn btn-wa" 
-                        style={{ 
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: '14px',
-                          height: '14px',
-                          minWidth: '14px',
-                          textDecoration: 'none',
-                          flexShrink: 0,
-                          padding: 0,
-                          cursor: 'pointer',
-                          color: '#16a34a',
-                          background: 'transparent',
-                          border: 'none',
-                          opacity: 0.8
-                        }}
-                        title="Chat via WhatsApp"
-                      >
-                        <svg style={{ width: '11px', height: '11px' }} fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 00-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
-                      </a>
-                    </div>
-                  </div>
+                  <a 
+                    href={"tel:" + phone}
+                    onClick={() => setActiveRowId(o.id)}
+                    className="tabular-nums text-sm font-semibold hover:underline"
+                    style={{ 
+                      color: 'var(--text-primary)', 
+                      textDecoration: 'none', 
+                      fontSize: '0.75rem', 
+                      cursor: 'pointer',
+                      letterSpacing: '0.01em'
+                    }}
+                    title="Click to initiate SIM Call"
+                  >
+                    {phone}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setActiveRowId(o.id);
+                      copyWithTooltip(phone, e);
+                      addToast('Phone number copied!', 'success');
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '2px',
+                      cursor: 'pointer',
+                      color: 'var(--text-secondary)',
+                      opacity: 0.65,
+                      transition: 'opacity 0.15s ease, transform 0.15s ease',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '4px',
+                      flexShrink: 0,
+                    }}
+                    className="phone-copy-btn"
+                    title="Copy phone number"
+                  >
+                    <svg 
+                      width="11" 
+                      height="11" 
+                      viewBox="0 0 24 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2.5" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                    >
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                  </button>
+                  <a 
+                    href={(localStorage.getItem('trace_use_wa_web') === 'true' ? "https://web.whatsapp.com/send" : "whatsapp://send") + "?phone=" + waPhone} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    onClick={(e) => { e.stopPropagation(); setActiveRowId(o.id); }} 
+                    className="phone-action-btn btn-wa" 
+                    style={{ 
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '20px',
+                      height: '20px',
+                      minWidth: '20px',
+                      textDecoration: 'none',
+                      flexShrink: 0,
+                      padding: 0,
+                      cursor: 'pointer',
+                      color: '#16a34a',
+                      background: 'rgba(22, 163, 74, 0.1)',
+                      border: '1px solid rgba(22, 163, 74, 0.25)',
+                      borderRadius: '5px',
+                    }}
+                    title="Open Direct WhatsApp Chat"
+                  >
+                    <svg style={{ width: '11px', height: '11px' }} fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 00-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                  </a>
                 </div>
               ) : '—'}
             </td>

@@ -21,7 +21,7 @@ export default function TableHeader({
 }) {
   return (
     <thead>
-      <tr>
+      <tr className="header-title-row">
         <th style={{ width: 40, minWidth: 40, maxWidth: 40, textAlign: 'center' }}>
           <input 
             type="checkbox" 
@@ -40,12 +40,12 @@ export default function TableHeader({
             onDragOver={onDragOver}
             onDrop={() => onDrop(idx)}
             onClick={col.id === 'ref_number' ? undefined : () => handleHeaderSort(col.id)}
-            className={col.id === 'phone' ? 'min-w-[250px] whitespace-nowrap shrink-0' : (col.id === 'address' ? 'break-words whitespace-normal' : '')}
+            className={col.id === 'address' ? 'break-words whitespace-normal' : ''}
             style={{ 
               cursor: col.id === 'ref_number' ? 'default' : 'pointer', 
               userSelect: 'none',
               width: COLUMN_WIDTHS[col.id] || 120,
-              minWidth: col.id === 'phone' ? 250 : (COLUMN_WIDTHS[col.id] || 120),
+              minWidth: COLUMN_WIDTHS[col.id] || 120,
               maxWidth: COLUMN_WIDTHS[col.id] || 120,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -192,11 +192,11 @@ export default function TableHeader({
           return (
             <th 
               key={col.id} 
-              className={col.id === 'phone' ? 'min-w-[250px] whitespace-nowrap shrink-0' : (col.id === 'address' ? 'break-words whitespace-normal' : '')}
+              className={col.id === 'address' ? 'break-words whitespace-normal' : ''}
               style={{ 
                 padding: '4px 8px',
                 width: COLUMN_WIDTHS[col.id] || 120,
-                minWidth: col.id === 'phone' ? 250 : (COLUMN_WIDTHS[col.id] || 120),
+                minWidth: COLUMN_WIDTHS[col.id] || 120,
                 maxWidth: COLUMN_WIDTHS[col.id] || 120,
               }}
             >

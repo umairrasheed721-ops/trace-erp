@@ -15,27 +15,29 @@ import LinkSkuModal from '../LinkSkuModal'
 const COLUMN_WIDTHS = {
   ref_number: 175,
   order_date: 125,
-  customer_name: 140,
+  customer_name: 145,
   customer_history: 100,
-  phone: 200,
-  address: 240,
-  city: 90,
-  items: 240,
+  tags: 145,
+  phone: 185,
+  address: 245,
+  city: 132,
+  items: 270,
   tracking_number: 180,
-  courier: 90,
-  courier_status: 120,
+  courier: 95,
+  courier_status: 125,
   delivery_status: 160,
-  payment_status: 90,
+  payment_status: 95,
   paid_amount: 100,
   price: 90,
   cost: 95,
+  courier_fee: 100,
   profit: 95,
   order_source: 90,
   status_date: 120,
   payment_ref: 140,
   payment_date: 110,
   postex_weight: 90,
-  edit: 130,
+  edit: 176,
   notes: 180
 }
 
@@ -470,7 +472,7 @@ export default function CommandTable({
           transform: scale(1.15);
         }
       `}</style>
-      <div className="table-wrapper" style={{ minWidth: '100%', width: '100%', overflowX: 'auto' }}>
+      <div className="table-wrapper command-table-wrapper" style={{ minWidth: '100%', width: '100%' }}>
         <div style={{ 
           background: 'var(--bg-elevated)', 
           borderBottom: '1px solid var(--border)', 

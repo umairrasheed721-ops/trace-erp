@@ -106,10 +106,20 @@ export const CityCell = React.memo(function CityCell({ order, onSave, onInteract
         setIsEditing(true)
         if (onInteraction) onInteraction()
       }}
-      style={{ cursor: 'pointer', minHeight: 20, fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-primary)' }}
-      title="Click to edit city"
+      style={{
+        cursor: 'pointer',
+        minHeight: 20,
+        fontSize: '0.73rem',
+        fontWeight: 600,
+        color: 'var(--text-primary)',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        maxWidth: '100%'
+      }}
+      title={order.city ? `${order.city} (click to edit)` : 'Click to edit city'}
     >
-      {order.city || <span style={{ opacity: 0.3 }}>Missing</span>}
+      {order.city || <span style={{ opacity: 0.35 }}>Missing</span>}
     </div>
   )
 })

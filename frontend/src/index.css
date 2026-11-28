@@ -395,9 +395,28 @@ input:focus, select:focus, textarea:focus, button:focus {
   text-align: center;
 }
 .header-search-row th {
-  background: rgba(255,255,255,0.02);
+  background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+  position: sticky;
+  top: 34px;
+  z-index: 11;
+}
+.ultra-compact .header-search-row th {
+  top: 26px;
+}
+.header-title-row th {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  background: var(--bg-elevated);
+}
+.command-table-wrapper {
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+}
+.draggable-table tbody td {
+  max-width: none;
 }
 .header-search-input {
   width: 100%;
@@ -496,12 +515,10 @@ input:focus, select:focus, textarea:focus, button:focus {
 .sidebar-collapsed.ultra-compact-mode .page-content { padding: 0; }
 
 .sticky-controls {
-  position: sticky;
-  top: var(--topbar-height);
-  z-index: 40;
+  position: relative;
+  z-index: 20;
   background: var(--bg-base);
-  padding-top: 10px;
-  margin-top: -10px;
+  padding-top: 6px;
 }
 
 .card-title {
