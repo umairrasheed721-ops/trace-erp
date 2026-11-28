@@ -4,13 +4,13 @@ const API_TIMEOUT = 15000;
 
 /**
  * Fetch registered merchant pickup locations from PostEx API
- * GET https://api.postex.pk/services/integration/api/order/v1/get-pickup-address
+ * Official PostEx Merchant API v4.1.9: GET /services/integration/api/order/v1/get-merchant-address
  */
 async function fetchPostExPickupAddresses(storeOrToken) {
   const token = typeof storeOrToken === 'string' ? storeOrToken.trim() : String(storeOrToken?.postex_token || '').trim();
   if (!token) throw new Error('PostEx Token missing for this store');
 
-  const url = 'https://api.postex.pk/services/integration/api/order/v1/get-pickup-address';
+  const url = 'https://api.postex.pk/services/integration/api/order/v1/get-merchant-address';
   const response = await fetch(url, {
     method: 'GET',
     headers: { token },
@@ -25,8 +25,8 @@ async function fetchPostExPickupAddresses(storeOrToken) {
   const rawList = Array.isArray(data.dist) ? data.dist : [];
   return rawList
     .map((item) => ({
-      addressCode: String(item.addressCode || item.pickupAddressCode || item.code || '').trim(),
-      address: String(item.address || '').trim(),
+      addressCode: String(item.addressCode || item.pickupAddressCode || item.merchantAddressCode || item.code || '').trim(),
+      address: String(item.address || item.pickupAddress || '').trim(),
       cityName: String(item.cityName || item.city || '').trim(),
       contactPersonName: String(item.contactPersonName || item.contactName || '').trim(),
       phone1: String(item.phone1 || item.phone || '').trim(),

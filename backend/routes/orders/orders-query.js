@@ -486,11 +486,23 @@ router.get('/logistics/couriers', (req, res) => {
   }
 });
 
-// GET /api/logistics/cities - Fetch valid cities for a courier
-router.get('/logistics/cities', (req, res) => {
-  const { courier } = req.query;
-  const cities = db.prepare('SELECT city_name FROM courier_cities WHERE courier = ? ORDER BY city_name ASC').all(courier || 'PostEx');
-  res.json(cities.map(c => c.city_name));
+// GET /api/orders/logistics/cities - Fetch valid cities for a courier (with built-in PostEx fallback if DB table not synced yet)
+router.get('/logistics/cities', async (req, res) => {
+  try {
+    const targetCourier = req.query.courier || 'PostEx';
+    const cities = db.prepare('SELECT city_name FROM courier_cities WHERE courier = ? ORDER BY city_name ASC').all(targetCourier);
+    if (cities.length > 0) {
+      return res.json(cities.map(c => c.city_name));
+    }
+    if (String(targetCourier).toLowerCase() === 'postex') {
+      const { fetchPostExCities } = require('../../engines/postex');
+      const fallback = await fetchPostExCities();
+      return res.json(Array.isArray(fallback) ? fallback : []);
+    }
+    return res.json([]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

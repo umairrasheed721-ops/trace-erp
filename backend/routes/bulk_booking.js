@@ -15,6 +15,7 @@ async function processBulkBooking(storeId, ids, courier, bookingOptions = {}) {
     defaultRemarks = '',
     perOrderRemarks = {},
     perOrderPickup = {},
+    perOrderCity = {},
   } = bookingOptions || {};
   let success = 0, failed = 0;
   const failedOrders = [];
@@ -85,7 +86,11 @@ async function processBulkBooking(storeId, ids, courier, bookingOptions = {}) {
         continue;
       }
 
-      // 2. Pre-flight Check: City (Never set invalid status or overwrite customer notes - Rule 12)
+      // 2. Pre-flight Check: City (allow inline city override from Booking Dispatch Modal)
+      const idKey = String(id);
+      if (Object.prototype.hasOwnProperty.call(perOrderCity, idKey) && String(perOrderCity[idKey] || '').trim() !== '') {
+        order.city = String(perOrderCity[idKey]).trim();
+      }
       if (!order.city || order.city.trim() === '') {
         console.warn(`⚠️ [BulkBook] Skipped order ${order.ref_number || id}: Missing City`);
         failedOrders.push({ id, ref_number: order.ref_number || `#${id}`, reason: 'Missing City' });
@@ -102,7 +107,6 @@ async function processBulkBooking(storeId, ids, courier, bookingOptions = {}) {
         order.is_prepaid = true;
       }
 
-      const idKey = String(id);
       const hasPerOrderRemark = Object.prototype.hasOwnProperty.call(perOrderRemarks, idKey);
       const resolvedRemarks = String(
         hasPerOrderRemark
@@ -148,9 +152,9 @@ async function processBulkBooking(storeId, ids, courier, bookingOptions = {}) {
       db.prepare(`
         UPDATE orders
         SET tracking_number = ?, courier = ?, delivery_status = 'Booked',
-            courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
+            city = ?, courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
         WHERE id = ?
-      `).run(trackingNumber, dbCourier, resolvedRemarks, resolvedPickup, id);
+      `).run(trackingNumber, dbCourier, order.city, resolvedRemarks, resolvedPickup, id);
       try {
         const { allocateOrderFifoOnDispatch } = require('../services/poLedgerService');
         allocateOrderFifoOnDispatch(id, 'BulkBook');
@@ -218,6 +222,7 @@ router.post('/book', (req, res) => {
     default_remarks = '',
     per_order_remarks = {},
     per_order_pickup = {},
+    per_order_city = {},
   } = b;
   if (!ids || !ids.length || !courier) return res.status(400).json({ error: 'ids and courier required' });
 
@@ -225,13 +230,14 @@ router.post('/book', (req, res) => {
   const order = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(ids[0]);
   if (!order) return res.status(404).json({ error: 'Order not found' });
 
-  // Spin up background loop with batch + per-order pickup locations & courier slip remarks
+  // Spin up background loop with batch + per-order pickup locations, cities & courier slip remarks
   processBulkBooking(order.store_id, ids, courier, {
     pickupAddressCode: pickup_address_code,
     pickupAddress: pickup_address,
     defaultRemarks: default_remarks,
     perOrderRemarks: per_order_remarks && typeof per_order_remarks === 'object' ? per_order_remarks : {},
     perOrderPickup: per_order_pickup && typeof per_order_pickup === 'object' ? per_order_pickup : {},
+    perOrderCity: per_order_city && typeof per_order_city === 'object' ? per_order_city : {},
   }).catch(console.error);
 
   // Return immediate 202 Accepted

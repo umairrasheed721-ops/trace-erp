@@ -21,14 +21,15 @@ function getCourierMeta(courier) {
   return { isPostEx: false, icon: '🌐', label: 'Instaworld API 1 (Primary)', accent: '#10b981', accountType: 'primary' };
 }
 
-function getOrderBlockReason(order) {
+function getOrderBlockReason(order, editedCity) {
   if (order.tracking_number && String(order.tracking_number).trim() !== '' && String(order.tracking_number).trim() !== '—') {
     return { code: 'tracked', label: `Already Booked (${order.tracking_number})` };
   }
   if (!order.cost || parseFloat(order.cost) <= 0) {
     return { code: 'cost', label: 'Zero Cost (Rs 0)' };
   }
-  if (!order.city || String(order.city).trim() === '') {
+  const cityVal = editedCity !== undefined ? editedCity : order.city;
+  if (!cityVal || String(cityVal).trim() === '') {
     return { code: 'city', label: 'Missing City' };
   }
   return null;
@@ -59,8 +60,12 @@ export default function BookingDispatchModal({
   const [includedIds, setIncludedIds] = useState({});
   const [remarksById, setRemarksById] = useState({});
   const [pickupById, setPickupById] = useState({});
+  const [cityById, setCityById] = useState({});
+  const [validCities, setValidCities] = useState([]);
   const [filterText, setFilterText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const validCitySet = useMemo(() => new Set(validCities.map(c => String(c || '').trim().toLowerCase())), [validCities]);
 
   // Initialize per-order states whenever modal opens with a new selection
   useEffect(() => {
@@ -69,19 +74,22 @@ export default function BookingDispatchModal({
     const nextIncluded = {};
     const nextRemarks = {};
     const nextPickup = {};
+    const nextCity = {};
 
     orders.forEach((o) => {
-      const blocked = getOrderBlockReason(o);
+      const blocked = getOrderBlockReason(o, o.city);
       nextIncluded[o.id] = !blocked;
       nextRemarks[o.id] = (o.courier_remarks && String(o.courier_remarks).trim() !== '')
         ? String(o.courier_remarks)
         : defaultRem;
       nextPickup[o.id] = o.pickup_address_code || '';
+      nextCity[o.id] = o.city || '';
     });
 
     setIncludedIds(nextIncluded);
     setRemarksById(nextRemarks);
     setPickupById(nextPickup);
+    setCityById(nextCity);
     setBatchRemark(defaultRem);
     setPickupCode(activeStore?.postex_pickup_code || '');
     setManualPickupCode('');
@@ -92,6 +100,17 @@ export default function BookingDispatchModal({
     if (storeId) {
       fetchLocations(false);
     }
+
+    // Load valid courier cities for inline autocomplete & validation
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    const token = localStorage.getItem('trace_token');
+    const targetCourier = meta.isPostEx ? 'PostEx' : 'Instaworld';
+    fetch(`${apiUrl}/api/orders/logistics/cities?courier=${encodeURIComponent(targetCourier)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => (r.ok ? r.json() : []))
+      .then(list => { if (Array.isArray(list)) setValidCities(list); })
+      .catch(() => {});
   }, [show, courier, storeId]);
 
   const fetchLocations = async (forceRefresh = false) => {
@@ -178,9 +197,9 @@ export default function BookingDispatchModal({
   const orderStates = useMemo(() => {
     return orders.map((o) => ({
       order: o,
-      blocked: getOrderBlockReason(o),
+      blocked: getOrderBlockReason(o, cityById[o.id]),
     }));
-  }, [orders]);
+  }, [orders, cityById]);
 
   const readyOrders = useMemo(() => {
     return orderStates.filter(({ order, blocked }) => !blocked && includedIds[order.id]).map(x => x.order);
@@ -194,10 +213,10 @@ export default function BookingDispatchModal({
     return orderStates.filter(({ order }) =>
       String(order.ref_number || '').toLowerCase().includes(q) ||
       String(order.customer_name || '').toLowerCase().includes(q) ||
-      String(order.city || '').toLowerCase().includes(q) ||
+      String(cityById[order.id] || order.city || '').toLowerCase().includes(q) ||
       String(order.phone || '').toLowerCase().includes(q)
     );
-  }, [orderStates, filterText]);
+  }, [orderStates, filterText, cityById]);
 
   const applyBatchRemarkToAll = () => {
     const text = batchRemark.trim();
@@ -248,12 +267,13 @@ export default function BookingDispatchModal({
         const ord = readyOrders[0];
         const ordRemark = String(remarksById[ord.id] || '').trim();
         const ordPickup = String(pickupById[ord.id] || resolvedBatchPickup || '').trim();
+        const ordCity = String(cityById[ord.id] !== undefined ? cityById[ord.id] : (ord.city || '')).trim();
         const endpoint = meta.isPostEx
           ? `${apiUrl}/api/orders/${ord.id}/book-postex`
           : `${apiUrl}/api/orders/${ord.id}/book-instaworld`;
         const payload = meta.isPostEx
-          ? { pickup_address_code: ordPickup, remarks: ordRemark }
-          : { account_type: meta.accountType, pickup_address: ordPickup, remarks: ordRemark };
+          ? { pickup_address_code: ordPickup, remarks: ordRemark, city: ordCity }
+          : { account_type: meta.accountType, pickup_address: ordPickup, remarks: ordRemark, city: ordCity };
 
         const res = await fetch(endpoint, { method: 'POST', headers: authHeaders, body: JSON.stringify(payload) });
         const data = await res.json().catch(() => ({}));
@@ -269,19 +289,23 @@ export default function BookingDispatchModal({
             data,
             remarks: ordRemark,
             pickupCode: ordPickup,
+            city: ordCity,
           });
         }
         onClose();
         return;
       }
 
-      // Multi-order bulk booking with batch pickup + per-order remarks & per-order pickup overrides
+      // Multi-order bulk booking with batch pickup + per-order city, remarks & pickup overrides
       const perOrderRemarks = {};
       const perOrderPickup = {};
+      const perOrderCity = {};
       readyOrders.forEach((o) => {
         perOrderRemarks[String(o.id)] = String(remarksById[o.id] || '').trim();
         const p = String(pickupById[o.id] || '').trim();
         if (p) perOrderPickup[String(o.id)] = p;
+        const c = String(cityById[o.id] !== undefined ? cityById[o.id] : (o.city || '')).trim();
+        if (c) perOrderCity[String(o.id)] = c;
       });
 
       const res = await fetch(`${apiUrl}/api/bulk/book`, {
@@ -295,6 +319,7 @@ export default function BookingDispatchModal({
           default_remarks: batchRemark.trim(),
           per_order_remarks: perOrderRemarks,
           per_order_pickup: perOrderPickup,
+          per_order_city: perOrderCity,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -308,6 +333,7 @@ export default function BookingDispatchModal({
           ids: readyOrders.map(o => o.id),
           courier,
           pickupCode: resolvedBatchPickup,
+          perOrderCity,
         });
       }
       onClose();
@@ -582,10 +608,18 @@ export default function BookingDispatchModal({
             )}
           </div>
 
+          <datalist id="booking-dispatch-cities">
+            {validCities.map((c) => <option key={c} value={c} />)}
+          </datalist>
+
           {visibleOrderStates.map(({ order, blocked }) => {
             const checked = !blocked && Boolean(includedIds[order.id]);
             const isPrepaid = ['paid', 'payment posted'].includes(String(order.payment_status || '').toLowerCase());
             const remVal = remarksById[order.id] || '';
+            const cityVal = cityById[order.id] !== undefined ? cityById[order.id] : (order.city || '');
+            const cityTrim = String(cityVal || '').trim();
+            const isCityExact = validCitySet.size > 0 && cityTrim !== '' && validCitySet.has(cityTrim.toLowerCase());
+            const isHardBlocked = blocked && blocked.code !== 'city';
             const safeHints = detectSafeNoteHints(order.notes, remVal);
 
             return (
@@ -594,7 +628,7 @@ export default function BookingDispatchModal({
                 style={{
                   border: `1px solid ${blocked ? 'rgba(239,68,68,0.35)' : checked ? 'var(--border-bright)' : 'var(--border)'}`,
                   background: blocked ? 'rgba(239,68,68,0.05)' : checked ? 'var(--bg-surface)' : 'var(--bg-elevated)',
-                  opacity: checked ? 1 : 0.62,
+                  opacity: checked ? 1 : 0.72,
                   borderRadius: 11,
                   padding: '10px 12px',
                   display: 'flex',
@@ -602,8 +636,8 @@ export default function BookingDispatchModal({
                   gap: 7,
                 }}
               >
-                {/* Order Summary Row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {/* Order Summary Row with Inline Editable City */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <input
                     type="checkbox"
                     disabled={Boolean(blocked)}
@@ -617,14 +651,63 @@ export default function BookingDispatchModal({
                   <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)' }}>
                     {order.customer_name || 'Customer'}
                   </span>
-                  <span style={{
-                    fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6,
-                    background: order.city ? 'var(--bg-elevated)' : 'rgba(239,68,68,0.15)',
-                    color: order.city ? 'var(--text-secondary)' : '#dc2626',
-                    border: '1px solid var(--border)',
-                  }}>
-                    📍 {order.city || 'MISSING CITY'}
-                  </span>
+
+                  {/* Inline Editable City with Courier Autocomplete + Live Validity Indicator */}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: '0.72rem' }}>📍</span>
+                    <input
+                      type="text"
+                      list="booking-dispatch-cities"
+                      disabled={isHardBlocked}
+                      value={cityVal}
+                      onChange={(e) => {
+                        const nextVal = e.target.value;
+                        setCityById(prev => ({ ...prev, [order.id]: nextVal }));
+                        if (nextVal.trim() !== '' && !getOrderBlockReason(order, nextVal)) {
+                          setIncludedIds(prev => ({ ...prev, [order.id]: true }));
+                        }
+                      }}
+                      placeholder="Enter delivery city..."
+                      title={
+                        !cityTrim
+                          ? 'City is required before booking'
+                          : isCityExact
+                            ? `Valid ${meta.isPostEx ? 'PostEx' : 'Courier'} city`
+                            : `Type or select an official ${meta.isPostEx ? 'PostEx' : 'Courier'} city`
+                      }
+                      className="form-input"
+                      style={{
+                        width: 170,
+                        fontSize: '0.76rem',
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        borderRadius: 7,
+                        border: `1px solid ${
+                          !cityTrim
+                            ? '#ef4444'
+                            : isCityExact
+                              ? 'rgba(16,185,129,0.55)'
+                              : validCitySet.size > 0
+                                ? 'rgba(245,158,11,0.6)'
+                                : 'var(--border-bright)'
+                        }`,
+                        background: !cityTrim
+                          ? 'rgba(239,68,68,0.08)'
+                          : isCityExact
+                            ? 'rgba(16,185,129,0.08)'
+                            : 'var(--bg-elevated)',
+                      }}
+                    />
+                    {validCitySet.size > 0 && cityTrim !== '' && (
+                      <span
+                        title={isCityExact ? 'Valid courier city' : 'Non-standard city name — pick from dropdown suggestions'}
+                        style={{ fontSize: '0.72rem', fontWeight: 800, color: isCityExact ? '#059669' : '#d97706' }}
+                      >
+                        {isCityExact ? '✓' : '⚠️'}
+                      </span>
+                    )}
+                  </div>
+
                   <span style={{
                     marginLeft: 'auto',
                     fontSize: '0.74rem',
@@ -647,7 +730,7 @@ export default function BookingDispatchModal({
                 </div>
 
                 {/* Per-Order Slip Remarks + Quick Toggle Chips */}
-                {!blocked && (
+                {!isHardBlocked && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingLeft: 25 }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                       <input

@@ -2099,7 +2099,7 @@ export default function SearchTool() {
             setStores(prev => prev.map(s => s.id === activeStore.id ? { ...s, ...saved } : s))
           }
         }}
-        onBookingSubmitted={({ mode, orderId, data, courier, remarks, pickupCode, ids }) => {
+        onBookingSubmitted={({ mode, orderId, data, courier, remarks, pickupCode, city, ids, perOrderCity }) => {
           if (mode === 'single' && orderId && data) {
             const msg = data.shopifyFulfilled === false
               ? `✅ Booked (${data.tracking_number}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
@@ -2110,12 +2110,16 @@ export default function SearchTool() {
               tracking_number: data.tracking_number,
               courier,
               delivery_status: 'Booked',
+              city: city || o.city,
               courier_remarks: remarks ?? o.courier_remarks,
               pickup_address_code: pickupCode ?? o.pickup_address_code,
             } : o))
             setSelectedIds(prev => prev.filter(x => x !== orderId))
             fetchBacklogDates()
           } else if (mode === 'bulk') {
+            if (perOrderCity && Object.keys(perOrderCity).length > 0) {
+              setAllOrders(prev => prev.map(o => perOrderCity[String(o.id)] ? { ...o, city: perOrderCity[String(o.id)] } : o))
+            }
             addToast(`🚀 Background Booking Started for ${ids?.length || 0} orders! Check Topbar.`, 'info')
             setSelectedIds([])
             fetchBacklogDates()

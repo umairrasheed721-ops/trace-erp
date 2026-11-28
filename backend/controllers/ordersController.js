@@ -530,7 +530,7 @@ exports.bookPostex = async (req, res) => {
   const { fulfillShopifyOrder } = require('../engines/shopify');
   const { getBestMatch } = require('../engines/logistics');
 
-  const { pickup_address_code, remarks, weight } = req.body || {};
+  const { pickup_address_code, remarks, weight, city } = req.body || {};
 
   try {
     const order = db.prepare(`
@@ -545,9 +545,11 @@ exports.bookPostex = async (req, res) => {
     if (order.tracking_number && order.tracking_number.trim() !== '') {
       return res.status(400).json({ error: 'Order already has a tracking number' });
     }
-    if (!order.city || order.city.trim() === '') {
+    const effectiveCity = String(city !== undefined && String(city).trim() !== '' ? city : (order.city || '')).trim();
+    if (!effectiveCity) {
       return res.status(400).json({ error: 'Missing City: Please enter a valid delivery city before booking' });
     }
+    order.city = effectiveCity;
 
     // Smart City Mapping
     const matchedCity = getBestMatch(order.city, 'PostEx');
@@ -571,13 +573,13 @@ exports.bookPostex = async (req, res) => {
       weight,
     });
 
-    // 2. Update local database (persist tracking, remarks & pickup code)
+    // 2. Update local database (persist tracking, city, remarks & pickup code)
     db.prepare(`
       UPDATE orders
       SET tracking_number = ?, courier = ?, delivery_status = 'Booked',
-          courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
+          city = ?, courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
       WHERE id = ?
-    `).run(trackingNumber, 'PostEx', resolvedRemarks, resolvedPickup, req.params.id);
+    `).run(trackingNumber, 'PostEx', order.city, resolvedRemarks, resolvedPickup, req.params.id);
 
     // 2b. Autopilot FIFO batch consume & cost lock
     try {
@@ -612,7 +614,7 @@ exports.bookInstaworld = async (req, res) => {
   const { createInstaworldOrder } = require('../engines/instaworld');
   const { fulfillShopifyOrder } = require('../engines/shopify');
   const { getBestMatch } = require('../engines/logistics');
-  const { account_type, pickup_address, pickup_address_code, remarks, weight } = req.body || {};
+  const { account_type, pickup_address, pickup_address_code, remarks, weight, city } = req.body || {};
 
   try {
     const order = db.prepare(`
@@ -627,9 +629,11 @@ exports.bookInstaworld = async (req, res) => {
     if (order.tracking_number && order.tracking_number.trim() !== '') {
       return res.status(400).json({ error: 'Order already has a tracking number' });
     }
-    if (!order.city || order.city.trim() === '') {
+    const effectiveCity = String(city !== undefined && String(city).trim() !== '' ? city : (order.city || '')).trim();
+    if (!effectiveCity) {
       return res.status(400).json({ error: 'Missing City: Please enter a valid delivery city before booking' });
     }
+    order.city = effectiveCity;
 
     // Smart City Mapping
     const matchedCity = getBestMatch(order.city, 'Instaworld');
@@ -662,13 +666,13 @@ exports.bookInstaworld = async (req, res) => {
       weight,
     });
 
-    // 2. Update local database (persist tracking, remarks & pickup address)
+    // 2. Update local database (persist tracking, city, remarks & pickup address)
     db.prepare(`
       UPDATE orders
       SET tracking_number = ?, courier = ?, delivery_status = 'Booked',
-          courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
+          city = ?, courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
       WHERE id = ?
-    `).run(trackingNumber, 'Instaworld', resolvedRemarks, resolvedPickup, req.params.id);
+    `).run(trackingNumber, 'Instaworld', order.city, resolvedRemarks, resolvedPickup, req.params.id);
 
     // 2b. Autopilot FIFO batch consume & cost lock
     try {

@@ -507,7 +507,7 @@ router.post('/:id/test-courier', async (req, res) => {
       const apiToken = (token !== undefined ? token : store.postex_token || '').trim();
       if (!apiToken) return res.status(400).json({ success: false, error: 'PostEx token is empty' });
 
-      const r = await fetch('https://api.postex.pk/services/integration/api/order/v1/get-pickup-address', {
+      const r = await fetch('https://api.postex.pk/services/integration/api/order/v1/get-merchant-address', {
         method: 'GET',
         headers: { token: apiToken },
         timeout: DIAGNOSTIC_TIMEOUT,
