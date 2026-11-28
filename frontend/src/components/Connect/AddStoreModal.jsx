@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 const REQUIRED_SCOPES_PREVIEW = [
-  'read_orders', 'write_orders', 'read_all_orders',
+  'read_orders', 'write_orders', 'read_all_orders', 'read_order_edits', 'write_order_edits',
   'read_products', 'write_products',
   'read_inventory', 'write_inventory', 'read_locations',
   'read_customers', 'read_fulfillments', 'write_fulfillments',
@@ -151,7 +151,7 @@ export default function AddStoreModal({ onClose, onConnected, onOpenGuide, addTo
                 Connect New Shopify Store
               </div>
               <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                Link via Partner OAuth App (17 scopes incl. Theme Sync) or Direct Custom App Token
+                Link via Partner OAuth App (19 scopes incl. Order Edits &amp; Theme Sync) or Direct Custom App Token
               </div>
             </div>
           </div>
@@ -197,7 +197,7 @@ export default function AddStoreModal({ onClose, onConnected, onOpenGuide, addTo
               border: '1px solid var(--border)', marginBottom: 20
             }}>
               {[
-                { id: 'oauth', label: '🔐 Partner OAuth App', sub: 'Recommended · Auto 17 scopes' },
+                { id: 'oauth', label: '🔐 Partner OAuth App', sub: 'Recommended · Auto 19 scopes' },
                 { id: 'direct', label: '⚡ Direct Admin Token', sub: 'Instant shpat_ Custom App' },
               ].map(m => (
                 <button

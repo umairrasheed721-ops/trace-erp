@@ -29,8 +29,11 @@ export default function useCommandCenterModals() {
 
   useEffect(() => {
     if (editingOrderId && validCities.length === 0) {
-      fetch(`/api/orders/logistics/cities?courier=PostEx`)
-        .then(res => res.json())
+      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || ''
+      fetch(`/api/orders/logistics/cities?courier=PostEx`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      })
+        .then(res => res.ok ? res.json() : [])
         .then(data => { if (Array.isArray(data)) setValidCities(data) })
         .catch(console.error)
     }
@@ -38,7 +41,7 @@ export default function useCommandCenterModals() {
 
   const isCityValid = editingOrder && validCities.length > 0 
     ? validCities.some(v => v.toLowerCase() === (editingOrder.city || '').trim().toLowerCase())
-    : true
+    : null
 
   const fetchOrderDetails = async (orderId) => {
     setEditorLoading(true)

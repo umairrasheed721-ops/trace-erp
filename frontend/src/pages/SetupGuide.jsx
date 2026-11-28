@@ -6,12 +6,12 @@ const API = import.meta.env.VITE_API_URL || ''
 
 const REQUIRED_SCOPE_GROUPS = [
   {
-    group: 'Orders & Notes / Restock',
+    group: 'Orders, Live Order Edits & Restock',
     color: '#2563eb',
     bg: 'rgba(37,99,235,0.09)',
     border: 'rgba(37,99,235,0.28)',
-    scopes: ['read_orders', 'write_orders', 'read_all_orders'],
-    why: 'Order sync, Shopify notes/tags update, cancellation sync, and partial return restocks.',
+    scopes: ['read_orders', 'write_orders', 'read_all_orders', 'read_order_edits', 'write_order_edits'],
+    why: 'Order sync, CS Order Editor live item/price/discount edits, Shopify notes/tags update, cancellations, and partial return restocks.',
   },
   {
     group: 'Products & Inventory (ERP Boss)',

@@ -640,7 +640,7 @@ export default function StoreDetailWorkspace({
                 >
                   {health?.scopes?.ok ? (
                     health.scopes.missing.length === 0 ? (
-                      <div style={{ color: '#059669', fontWeight: 600 }}>All 17 required scopes granted (incl. Theme Sync) ✓</div>
+                      <div style={{ color: '#059669', fontWeight: 600 }}>All 19 required scopes granted (incl. Order Edits &amp; Theme Sync) ✓</div>
                     ) : (
                       <div>
                         <div style={{ color: '#b45309', fontWeight: 700, marginBottom: 4 }}>
@@ -1012,7 +1012,7 @@ export default function StoreDetailWorkspace({
             <ConfigCard
               icon="🔑"
               title="OAuth Re-Authorization &amp; Token Management"
-              subtitle="Upgrade existing store scopes (e.g. add read_themes, write_themes) or rotate an expired access token without losing orders"
+              subtitle="Upgrade existing store scopes (e.g. add write_order_edits, read_themes, write_themes) or rotate an expired access token without losing orders"
             >
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 {/* OAuth Re-auth */}

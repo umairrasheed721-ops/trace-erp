@@ -62,10 +62,12 @@ function matchesSize(title, sku, targetSize) {
   return false;
 }
 
-// GET /api/whatsapp/in-stock-images?size=XL&include_continue_selling=true&store_id=1
+// GET /api/whatsapp/in-stock-images?size=XL|ALL&include_continue_selling=true&store_id=1
 router.get('/in-stock-images', (req, res) => {
   try {
-    const size = normalizeSize(req.query.size);
+    const rawSize = String(req.query.size || '').trim().toUpperCase();
+    const isAllMode = rawSize === 'ALL' || rawSize === 'ONE SIZE';
+    const size = isAllMode ? 'ALL' : normalizeSize(rawSize);
     if (!size) {
       return res.status(400).json({ success: false, error: 'size parameter is required' });
     }
@@ -105,7 +107,7 @@ router.get('/in-stock-images', (req, res) => {
 
     const variants = [];
     for (const r of rows) {
-      if (!matchesSize(r.title, r.sku, size)) continue;
+      if (!isAllMode && !matchesSize(r.title, r.sku, size)) continue;
 
       variants.push({
         shopify_variant_id: r.shopify_variant_id,

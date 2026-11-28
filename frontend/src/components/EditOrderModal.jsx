@@ -42,7 +42,7 @@ function extractSizeFromOrder(order) {
     const sizeMatch = normalizeSize(item.title) || normalizeSize(item.sku);
     if (sizeMatch) return sizeMatch;
   }
-  return 'M';
+  return 'ALL';
 }
 
 function escapeHtml(val) {
@@ -232,7 +232,7 @@ export default function EditOrderModal({
 
   const [waTemplates, setWATemplates] = useState([]);
   const [activeCouriers, setActiveCouriers] = useState([]);
-  const [selectedSize, setSelectedSize] = useState('M');
+  const [selectedSize, setSelectedSize] = useState('ALL');
   const [showBookMenu, setShowBookMenu] = useState(false);
 
   const [sendingCatalog, setSendingCatalog] = useState(false);
@@ -393,7 +393,8 @@ export default function EditOrderModal({
       const imageUrls = selectedObjects.map(v => v.image_url).filter(Boolean);
       const cleanName = (editingOrder.customer_name || 'Customer').trim().replace(/\s+/g, ' ');
       const itemsListText = selectedObjects.map((v, idx) => `*${idx + 1}.* ${v.title} - Rs. ${Number(v.price || 0).toLocaleString()}`).join('\n');
-      const message = `Assalam o Alaikum ${cleanName}, here are the available in-stock items in your size (${selectedSize}):\n\n${itemsListText}`;
+      const sizePhrase = selectedSize === 'ALL' ? '' : ` in your size (${selectedSize})`;
+      const message = `Assalam o Alaikum ${cleanName}, here are the available in-stock items${sizePhrase}:\n\n${itemsListText}`;
 
       const waPhone = String(editingOrder.phone || '').replace(/\D/g, '').replace(/^0/, '92');
       const waBase = localStorage.getItem('trace_use_wa_web') === 'true' ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
@@ -730,15 +731,15 @@ export default function EditOrderModal({
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 8, flexWrap: 'wrap' }}>
                       <label className="eom-label" style={{ marginBottom: 0 }}>City</label>
                       {editingOrder.city ? (
-                        isCityValid ? (
+                        isCityValid === true ? (
                           <span style={{ background: 'rgba(16,185,129,0.12)', color: '#059669', padding: '2px 9px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700 }}>
                             ✓ Valid PostEx City
                           </span>
-                        ) : (
+                        ) : isCityValid === false ? (
                           <span style={{ background: 'rgba(245,158,11,0.14)', color: '#d97706', padding: '2px 9px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700 }}>
                             ⚠️ Unrecognized PostEx City
                           </span>
-                        )
+                        ) : null
                       ) : (
                         <span style={{ background: 'rgba(239,68,68,0.12)', color: '#dc2626', padding: '2px 9px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700 }}>
                           🔴 City Missing
@@ -749,7 +750,7 @@ export default function EditOrderModal({
                       className="eom-input"
                       style={{
                         maxWidth: 320,
-                        borderColor: editingOrder.city && !isCityValid ? '#f59e0b' : undefined
+                        borderColor: editingOrder.city && isCityValid === false ? '#f59e0b' : undefined
                       }}
                       value={editingOrder.city || ''}
                       onChange={e => setEditingOrder(prev => ({ ...prev, city: e.target.value }))}
@@ -795,6 +796,7 @@ export default function EditOrderModal({
                       className="eom-select"
                       style={{ flex: 1 }}
                     >
+                      <option value="ALL">All / One Size</option>
                       <optgroup label="Standard Sizes">
                         {['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', '6XL'].map(s => (
                           <option key={s} value={s}>{s}</option>
@@ -918,7 +920,7 @@ export default function EditOrderModal({
                     </div>
                   ) : (
                     <div style={{ padding: 14, border: '1px dashed var(--border-bright)', borderRadius: 10, textAlign: 'center', color: catalogError ? '#dc2626' : '#d97706', fontSize: '0.78rem' }}>
-                      {catalogError ? `❌ ${catalogError}` : `⚠️ No in-stock items matching size ${selectedSize}`}
+                      {catalogError ? `❌ ${catalogError}` : (selectedSize === 'ALL' ? '⚠️ No in-stock catalog items with photos found (Sync Catalog first)' : `⚠️ No in-stock items matching size ${selectedSize}`)}
                     </div>
                   )}
                 </div>
