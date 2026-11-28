@@ -1556,6 +1556,21 @@ module.exports = [
     } catch (e) {
       console.error('Migration #56 failed:', e.message);
     }
+  },
+
+  // 57. Purge stale legacy (<200 rows) hardcoded courier_cities cache so live PostEx v2 (~897 active cities) auto-populates
+  (db) => {
+    try {
+      const counts = db.prepare('SELECT courier, COUNT(*) as cnt FROM courier_cities GROUP BY courier').all();
+      for (const row of counts) {
+        if (Number(row.cnt || 0) < 200) {
+          db.prepare('DELETE FROM courier_cities WHERE courier = ?').run(row.courier);
+          console.log(`✅ [Migration #57] Cleared stale ${row.cnt}-row fallback city cache for ${row.courier} (will auto-sync live active cities).`);
+        }
+      }
+    } catch (e) {
+      console.error('Migration #57 failed:', e.message);
+    }
   }
 ];
 

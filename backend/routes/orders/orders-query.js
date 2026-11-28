@@ -486,67 +486,32 @@ router.get('/logistics/couriers', (req, res) => {
   }
 });
 
-// GET /api/orders/logistics/cities - Fetch official operational cities for a specific courier (auto-syncs live & caches in DB)
+// GET /api/orders/logistics/cities - Fetch official active operational cities for a specific courier (auto-syncs live every 24h & on ?refresh=1)
 router.get('/logistics/cities', async (req, res) => {
   try {
     const rawCourier = String(req.query.courier || 'PostEx').trim();
-    const isInsta = rawCourier.toLowerCase().includes('insta') || ['tcs', 'lcs', 'leopards', 'trax'].includes(rawCourier.toLowerCase());
-    const targetCourier = isInsta ? 'Instaworld' : 'PostEx';
     const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    const wantMeta = req.query.meta === '1' || req.query.meta === 'true';
     const storeId = req.query.store_id ? Number(req.query.store_id) : null;
 
-    if (!forceRefresh) {
-      const cached = db.prepare('SELECT city_name FROM courier_cities WHERE courier = ? ORDER BY city_name ASC').all(targetCourier);
-      if (cached.length > 0) {
-        return res.json(cached.map(c => c.city_name));
-      }
+    const { getCourierCitiesWithAutoSync } = require('../../engines/logistics');
+    const result = await getCourierCitiesWithAutoSync(rawCourier, { storeId, forceRefresh });
+
+    res.set('X-Cities-Count', String(result.count || 0));
+    res.set('X-Cities-Source', String(result.source || 'cache'));
+    if (result.lastSyncedAt) res.set('X-Cities-Synced-At', String(result.lastSyncedAt));
+
+    if (wantMeta) {
+      return res.json({
+        success: true,
+        courier: result.courier,
+        count: result.count,
+        source: result.source,
+        lastSyncedAt: result.lastSyncedAt,
+        cities: result.cities,
+      });
     }
-
-    const store = storeId
-      ? db.prepare('SELECT id, postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3, gas_proxy_url FROM stores WHERE id = ?').get(storeId)
-      : db.prepare(`
-          SELECT id, postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3, gas_proxy_url
-          FROM stores
-          WHERE ${isInsta ? "(instaworld_key IS NOT NULL AND instaworld_key != '')" : "(postex_token IS NOT NULL AND postex_token != '')"}
-          LIMIT 1
-        `).get();
-
-    const { fetchPostExCities } = require('../../engines/postex');
-    let liveCities = [];
-
-    if (isInsta) {
-      const apiKey = store?.instaworld_key || store?.instaworld_key_backup || store?.instaworld_key_3 || '';
-      if (apiKey) {
-        try {
-          const { fetchInstaworldCities } = require('../../engines/instaworld');
-          const raw = await fetchInstaworldCities(apiKey, store);
-          liveCities = [...new Set(
-            (Array.isArray(raw) ? raw : [])
-              .map(c => (typeof c === 'string' ? c : (c?.cityName || c?.name || c?.city || '')).trim())
-              .filter(Boolean)
-          )].sort((a, b) => a.localeCompare(b));
-        } catch (iwErr) {
-          console.warn('⚠️ [Logistics Cities] Instaworld live fetch failed:', iwErr.message);
-        }
-      }
-      if (liveCities.length === 0) {
-        liveCities = await fetchPostExCities();
-      }
-    } else {
-      liveCities = await fetchPostExCities(store?.postex_token || '');
-    }
-
-    if (liveCities.length > 0) {
-      try {
-        const insertStmt = db.prepare('INSERT OR IGNORE INTO courier_cities (courier, city_name) VALUES (?, ?)');
-        const saveBatch = db.transaction((list) => {
-          for (const city of list) insertStmt.run(targetCourier, city);
-        });
-        saveBatch(liveCities);
-      } catch (_) {}
-    }
-
-    return res.json(liveCities);
+    return res.json(result.cities);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

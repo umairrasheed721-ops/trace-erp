@@ -868,19 +868,14 @@ exports.cancelBooking = async (req, res) => {
 };
 
 exports.syncCities = async (req, res) => {
-  const { fetchPostExCities } = require('../engines/postex');
-  const { fetchInstaworldCities } = require('../engines/instaworld');
-  const { syncCourierCities } = require('../engines/logistics');
-  
+  const { syncAllCouriersNow } = require('../engines/logistics');
   try {
-    const stores = db.prepare('SELECT id, postex_token, instaworld_key, gas_proxy_url FROM stores').all();
-    for (const store of stores) {
-      if (store.postex_token) await syncCourierCities('PostEx', fetchPostExCities, store.postex_token);
-      if (store.instaworld_key) {
-        await syncCourierCities('Instaworld', async (t) => fetchInstaworldCities(t, store), store.instaworld_key);
-      }
-    }
-    res.json({ success: true });
+    const result = await syncAllCouriersNow({ onlyIfStale: false });
+    res.json({
+      success: true,
+      postex: { count: result.postex?.count || 0, source: result.postex?.source || 'unknown' },
+      instaworld: { count: result.instaworld?.count || 0, source: result.instaworld?.source || 'unknown' },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

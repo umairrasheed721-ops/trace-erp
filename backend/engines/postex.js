@@ -125,33 +125,74 @@ const POSTEX_FALLBACK_CITIES = [
   "Wazirabad","Zhob"
 ];
 
+function formatPostExCityName(raw) {
+  const clean = String(raw || '').trim().replace(/\s+/g, ' ');
+  if (!clean) return '';
+  // Keep mixed-case official names untouched (e.g. "Adda Plot", "Dina Nath")
+  if (clean !== clean.toUpperCase()) return clean;
+  const KEEP_UPPER = new Set(['AJK', 'DHA', 'KPK', 'GB', 'FATA', 'ICT', 'SITE', 'S.I.T.E', 'GT', 'G.T', 'G.T.', 'II', 'III', 'IV', 'R', 'M', 'A', 'B', 'C', 'D']);
+  return clean.split(' ').map((word) => {
+    const bare = word.replace(/[()]/g, '');
+    if (KEEP_UPPER.has(bare)) return word;
+    return word.replace(/[A-Z]+/g, (seg) => seg.charAt(0) + seg.slice(1).toLowerCase());
+  }).join(' ');
+}
+
+function extractActiveDeliveryCities(data) {
+  // v2 returns { statusCode: '200', dist: [...] }, v1 returns raw array [...]
+  const list = Array.isArray(data) ? data : (Array.isArray(data?.dist) ? data.dist : []);
+  const seen = new Map();
+  for (const c of list) {
+    if (!c) continue;
+    // Strictly keep active delivery cities only
+    if (c.isDeliveryCity === false || c.isDelivery === false) continue;
+    const rawName = typeof c === 'string' ? c : (c.operationalCityName || c.cityName || c.name || '');
+    const formatted = formatPostExCityName(rawName);
+    if (!formatted) continue;
+    const key = formatted.toLowerCase();
+    if (!seen.has(key)) seen.set(key, formatted);
+  }
+  return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+}
+
 /**
- * Fetches official PostEx operational delivery cities live via v1/get-operational-city,
- * gracefully falling back to the built-in PostEx Pakistan city list if no token or API timeout.
+ * Fetches official live active PostEx operational delivery cities via v2/get-operational-city
+ * (with v1 fallback). Returns { cities, source: 'live' | 'fallback', count }.
  */
-async function fetchPostExCities(token) {
+async function fetchPostExCitiesDetailed(token) {
   const cleanToken = String(token || '').trim();
   if (cleanToken) {
-    try {
-      const res = await fetch('https://api.postex.pk/services/integration/api/order/v1/get-operational-city?operationalCityType=Delivery', {
-        method: 'GET',
-        headers: { token: cleanToken },
-        timeout: 6000,
-      });
-      const data = await res.json().catch(() => ({}));
-      const list = Array.isArray(data.dist) ? data.dist : [];
-      const names = [...new Set(
-        list
-          .filter(c => c && c.isDelivery !== false)
-          .map(c => String(c.operationalCityName || c.cityName || c.name || '').trim())
-          .filter(Boolean)
-      )].sort((a, b) => a.localeCompare(b));
-      if (names.length > 0) return names;
-    } catch (err) {
-      console.warn('⚠️ [PostEx Cities] Live fetch failed, using fallback list:', err.message);
+    const endpoints = [
+      'https://api.postex.pk/services/integration/api/order/v2/get-operational-city',
+      'https://api.postex.pk/services/integration/api/order/v1/get-operational-city',
+    ];
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: { token: cleanToken },
+          timeout: 10000,
+        });
+        if (!res.ok) continue;
+        const data = await res.json().catch(() => null);
+        const names = extractActiveDeliveryCities(data);
+        if (names.length >= 50) {
+          return { cities: names, source: 'live', count: names.length };
+        }
+      } catch (err) {
+        console.warn(`⚠️ [PostEx Cities] Fetch failed (${url.split('/order/')[1]}):`, err.message);
+      }
     }
   }
-  return POSTEX_FALLBACK_CITIES;
+  return { cities: POSTEX_FALLBACK_CITIES, source: 'fallback', count: POSTEX_FALLBACK_CITIES.length };
+}
+
+/**
+ * Backwards-compatible wrapper returning array of active PostEx delivery city names.
+ */
+async function fetchPostExCities(token) {
+  const res = await fetchPostExCitiesDetailed(token);
+  return res.cities;
 }
 
 /**
@@ -187,4 +228,4 @@ async function cancelPostExOrder(store, trackingNumber) {
   });
 }
 
-module.exports = { createPostExOrder, fetchPostExCities, cancelPostExOrder, fetchPostExPickupAddresses };
+module.exports = { createPostExOrder, fetchPostExCities, fetchPostExCitiesDetailed, cancelPostExOrder, fetchPostExPickupAddresses };

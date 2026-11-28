@@ -569,6 +569,13 @@ module.exports = function schedulerInit() {
         const { checkAndSendPostDeliveryFeedback } = require('./engines/post_delivery_feedback');
         await checkAndSendPostDeliveryFeedback(db, getBotSafe());
       } catch(e) {}
+      try {
+        const { syncAllCouriersNow } = require('./engines/logistics');
+        const cityRes = await syncAllCouriersNow({ onlyIfStale: true });
+        if (!cityRes.postex?.skipped || !cityRes.instaworld?.skipped) {
+          console.log(`🌍 [BOOT] Active courier cities refreshed (PostEx: ${cityRes.postex?.count || 0} [${cityRes.postex?.source}], Instaworld: ${cityRes.instaworld?.count || 0} [${cityRes.instaworld?.source}])`);
+        }
+      } catch (e) { console.warn('Boot courier cities sync notice:', e.message); }
     });
   }, 5000);
 
@@ -619,6 +626,27 @@ module.exports = function schedulerInit() {
         }
       } catch (e) {
         console.error(`[Post-Delivery Autopilot Error] (Tenant: ${tenantId}):`, e.message);
+      }
+    });
+  }, { timezone: 'UTC' });
+
+  // 19. Every day at 6:00 AM PKT (1:00 AM UTC): Auto-sync active courier operational cities (PostEx v2 + Instaworld pool)
+  cron.schedule('0 1 * * *', async () => {
+    console.log('🌍 [CRON] Daily Active Courier Cities Sync starting...');
+    await runMultiTenant('courier_cities_daily', async (tenantId) => {
+      try {
+        const { syncAllCouriersNow } = require('./engines/logistics');
+        const res = await syncAllCouriersNow({ onlyIfStale: false });
+        recordSyncEvent({
+          type: 'Courier Active Cities Sync',
+          category: 'courier',
+          total: 2,
+          success: (res.postex?.count >= 200 ? 1 : 0) + (res.instaworld?.count >= 200 ? 1 : 0),
+          failed: (res.postex?.count < 200 ? 1 : 0) + (res.instaworld?.count < 200 ? 1 : 0),
+          summary: `PostEx: ${res.postex?.count || 0} active · Instaworld: ${res.instaworld?.count || 0} active`,
+        });
+      } catch (e) {
+        console.error(`[Courier Cities Cron Error] (Tenant: ${tenantId}):`, e.message);
       }
     });
   }, { timezone: 'UTC' });

@@ -109,19 +109,19 @@ async function cancelInstaworldOrder(store, trackingNumber) {
 }
 
 /**
- * Fetch official Instaworld city list
+ * Fetch official Instaworld city list (isolated from booking/tracking circuit breaker so 404 never trips breaker)
  */
 async function fetchInstaworldCities(token, store = null) {
-  return instaworldBreaker.execute(async () => {
-    const url = 'https://one-be.instaworld.pk/logistics/v1/getCities';
-    const response = await instaworldFetch(url, {
-      method: 'GET',
-      headers: { 'api-key': token },
-      proxyUrl: store && store.gas_proxy_url,
-    });
-    const data = await response.json();
-    return data.cities || [];
+  const url = 'https://one-be.instaworld.pk/logistics/v1/getCities';
+  const response = await instaworldFetch(url, {
+    method: 'GET',
+    headers: { 'api-key': token },
+    proxyUrl: store && store.gas_proxy_url,
+    timeout: 6000,
   });
+  if (!response.ok) return [];
+  const data = await response.json().catch(() => ({}));
+  return Array.isArray(data?.cities) ? data.cities : [];
 }
 
 module.exports = { createInstaworldOrder, cancelInstaworldOrder, fetchInstaworldCities };

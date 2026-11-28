@@ -23,6 +23,8 @@ function SmartCitySelect({
   validCitySet,
   courierLabel = 'PostEx',
   disabled = false,
+  onRefreshCities,
+  refreshingCities = false,
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -197,8 +199,8 @@ function SmartCitySelect({
             overflow: 'hidden',
           }}
         >
-          {/* Search box inside dropdown */}
-          <div style={{ padding: '7px 8px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+          {/* Search box + 1-Click Live Active Cities Refresh */}
+          <div style={{ padding: '7px 8px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', gap: 5, alignItems: 'center' }}>
             <input
               ref={searchInputRef}
               type="text"
@@ -206,8 +208,32 @@ function SmartCitySelect({
               onChange={(e) => setSearch(e.target.value)}
               placeholder={`Search ${courierLabel} cities (${validCities.length})...`}
               className="form-input"
-              style={{ width: '100%', fontSize: '0.75rem', padding: '4px 8px' }}
+              style={{ flex: 1, minWidth: 0, fontSize: '0.75rem', padding: '4px 8px' }}
             />
+            {onRefreshCities && (
+              <button
+                type="button"
+                disabled={refreshingCities}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRefreshCities();
+                }}
+                title={`Sync latest active ${courierLabel} cities live from API`}
+                style={{
+                  padding: '4px 7px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border-bright)',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  cursor: refreshingCities ? 'wait' : 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {refreshingCities ? '⏳' : '🔄'}
+              </button>
+            )}
           </div>
 
           <div style={{ overflowY: 'auto', flex: 1, padding: '4px 0' }}>
@@ -362,6 +388,8 @@ export default function BookingDispatchModal({
   const [codById, setCodById] = useState({});
   const [editingCodId, setEditingCodId] = useState(null);
   const [validCities, setValidCities] = useState([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
+  const [citiesSource, setCitiesSource] = useState('');
   const [filterText, setFilterText] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -419,18 +447,38 @@ export default function BookingDispatchModal({
       fetchLocations(false);
     }
 
-    // Load valid operational cities for THIS specific courier (PostEx / Instaworld)
-    const apiUrl = import.meta.env.VITE_API_URL || '';
-    const token = localStorage.getItem('trace_token');
-    const targetCourier = meta.isPostEx ? 'PostEx' : 'Instaworld';
-    const storeQuery = storeId ? `&store_id=${encodeURIComponent(storeId)}` : '';
-    fetch(`${apiUrl}/api/orders/logistics/cities?courier=${encodeURIComponent(targetCourier)}${storeQuery}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then(r => (r.ok ? r.json() : []))
-      .then(list => { if (Array.isArray(list)) setValidCities(list); })
-      .catch(() => {});
+    // Load live active operational cities for THIS specific courier (auto-syncs every 24h)
+    loadCourierCities(false);
   }, [show, courier, storeId]);
+
+  const loadCourierCities = async (forceRefresh = false) => {
+    setCitiesLoading(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const token = localStorage.getItem('trace_token');
+      const targetCourier = meta.isPostEx ? 'PostEx' : 'Instaworld';
+      const storeQuery = storeId ? `&store_id=${encodeURIComponent(storeId)}` : '';
+      const refreshQuery = forceRefresh ? '&refresh=1' : '';
+      const res = await fetch(`${apiUrl}/api/orders/logistics/cities?courier=${encodeURIComponent(targetCourier)}${storeQuery}&meta=1${refreshQuery}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json().catch(() => null);
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.cities) ? data.cities : []);
+      if (list.length > 0) {
+        setValidCities(list);
+        setCitiesSource(data?.source || '');
+        if (forceRefresh && addToast) {
+          addToast(`🌍 Synced ${list.length} active ${targetCourier} cities!`, 'success', 2400);
+        }
+      } else if (forceRefresh && addToast) {
+        addToast(`⚠️ Could not refresh ${targetCourier} cities`, 'warning');
+      }
+    } catch (_) {
+      if (forceRefresh && addToast) addToast('⚠️ Network error refreshing courier cities', 'error');
+    } finally {
+      setCitiesLoading(false);
+    }
+  };
 
   const fetchLocations = async (forceRefresh = false) => {
     if (!storeId) return;
@@ -925,8 +973,28 @@ export default function BookingDispatchModal({
           background: 'var(--bg-primary)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-secondary)' }}>
-              📦 Selected Orders ({orders.length}) — Edit remarks on any specific order below:
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-secondary)' }}>
+                📦 Selected Orders ({orders.length}) — Edit city, COD or remarks below:
+              </div>
+              <button
+                type="button"
+                disabled={citiesLoading}
+                onClick={() => loadCourierCities(true)}
+                title={`Auto-syncs every 24h (Source: ${citiesSource || 'cache'}). Click to force-refresh active ${meta.isPostEx ? 'PostEx' : 'Instaworld'} cities now.`}
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  border: '1px solid var(--border-bright)',
+                  background: 'var(--bg-elevated)',
+                  color: 'var(--text-secondary)',
+                  cursor: citiesLoading ? 'wait' : 'pointer',
+                }}
+              >
+                {citiesLoading ? '⏳ Syncing cities...' : `🌍 ${validCities.length} Active Cities · 🔄 Sync`}
+              </button>
             </div>
             {orders.length > 5 && (
               <input
@@ -986,6 +1054,8 @@ export default function BookingDispatchModal({
                     validCitySet={validCitySet}
                     courierLabel={meta.isPostEx ? 'PostEx' : 'Instaworld'}
                     disabled={isHardBlocked}
+                    onRefreshCities={() => loadCourierCities(true)}
+                    refreshingCities={citiesLoading}
                     onChange={(nextVal) => {
                       setCityById(prev => ({ ...prev, [order.id]: nextVal }));
                       if (String(nextVal || '').trim() !== '' && !getOrderBlockReason(order, nextVal)) {
