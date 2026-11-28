@@ -232,6 +232,14 @@ router.post('/bulk-update', async (req, res) => {
 
     let sessionId = session_id || null;
     if (!dryRun && !sessionId) {
+      // Defensive schema check (handles older tenant DBs missing session counter columns)
+      try {
+        const rsCols = db.prepare('PRAGMA table_info(recon_sessions)').all().map(c => c.name);
+        if (!rsCols.includes('processed_count')) db.exec('ALTER TABLE recon_sessions ADD COLUMN processed_count INTEGER DEFAULT 0');
+        if (!rsCols.includes('ghost_count')) db.exec('ALTER TABLE recon_sessions ADD COLUMN ghost_count INTEGER DEFAULT 0');
+        if (!rsCols.includes('audit_count')) db.exec('ALTER TABLE recon_sessions ADD COLUMN audit_count INTEGER DEFAULT 0');
+      } catch (_) {}
+
       const sessionResult = db.prepare(
         'INSERT INTO recon_sessions (store_id, filename, row_count, sync_to_shopify, processed_count, ghost_count, audit_count) VALUES (?, ?, ?, ?, 0, 0, 0)'
       ).run(store_id, req.body.filename || 'Manual Upload', req.body.total_rows || rows.length, syncToShopify ? 1 : 0);

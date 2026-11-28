@@ -305,5 +305,44 @@ module.exports = [
     } catch (e) {
       console.error('❌ [Finance Migration #14] Error:', e.message);
     }
+  },
+
+  // 15. Ensure recon_sessions & recon_logs have all session tracking columns (processed_count, ghost_count, audit_count, cpr_reference)
+  (db) => {
+    try {
+      const rsCols = db.prepare('PRAGMA table_info(recon_sessions)').all().map(c => c.name);
+      const rsAdditions = [
+        ['filename', "TEXT DEFAULT 'Manual Upload'"],
+        ['row_count', 'INTEGER DEFAULT 0'],
+        ['sync_to_shopify', 'INTEGER DEFAULT 1'],
+        ['status', "TEXT DEFAULT 'completed'"],
+        ['raw_data', 'TEXT'],
+        ['processed_count', 'INTEGER DEFAULT 0'],
+        ['ghost_count', 'INTEGER DEFAULT 0'],
+        ['audit_count', 'INTEGER DEFAULT 0'],
+      ];
+      let added = 0;
+      for (const [col, def] of rsAdditions) {
+        if (!rsCols.includes(col)) {
+          db.exec(`ALTER TABLE recon_sessions ADD COLUMN ${col} ${def}`);
+          added++;
+        }
+      }
+
+      const rlCols = db.prepare('PRAGMA table_info(recon_logs)').all().map(c => c.name);
+      const rlAdditions = [
+        ['shopify_note_added', 'TEXT'],
+        ['cpr_reference', 'TEXT'],
+      ];
+      for (const [col, def] of rlAdditions) {
+        if (!rlCols.includes(col)) {
+          db.exec(`ALTER TABLE recon_logs ADD COLUMN ${col} ${def}`);
+          added++;
+        }
+      }
+      console.log(`✅ [Finance Migration #15] recon_sessions & recon_logs columns verified${added > 0 ? ` (${added} missing column(s) added)` : ''}.`);
+    } catch (e) {
+      console.error('❌ [Finance Migration #15] Error:', e.message);
+    }
   }
 ];
