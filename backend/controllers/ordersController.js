@@ -530,7 +530,7 @@ exports.bookPostex = async (req, res) => {
   const { fulfillShopifyOrder } = require('../engines/shopify');
   const { getBestMatch } = require('../engines/logistics');
 
-  const { pickup_address_code, remarks, weight, city } = req.body || {};
+  const { pickup_address_code, remarks, weight, city, cod_amount } = req.body || {};
 
   try {
     const order = db.prepare(`
@@ -562,24 +562,39 @@ exports.bookPostex = async (req, res) => {
       remarks !== undefined ? remarks : (order.courier_remarks || order.default_courier_remarks || '')
     ).trim();
 
-    // Prepaid Protection: Never charge COD on Paid orders
+    // Prepaid Protection + Optional Per-Order Custom COD Override (keeps original order.price intact for PNL/Advance audit!)
+    const originalPrice = parseFloat(order.price) || 0;
     const isPrepaid = ['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase());
-    const bookingPayload = isPrepaid ? { ...order, price: 0, is_prepaid: true } : order;
+    const hasCustomCod = cod_amount !== undefined && cod_amount !== null && String(cod_amount).trim() !== '';
+    let finalCod = isPrepaid ? 0 : originalPrice;
+    let bookedCodToSave = null;
+    if (hasCustomCod) {
+      const parsedCod = Number(cod_amount);
+      if (!Number.isFinite(parsedCod) || parsedCod < 0) {
+        return res.status(400).json({ error: 'Invalid COD amount: must be 0 or greater' });
+      }
+      finalCod = Math.round(parsedCod * 100) / 100;
+      if (Math.abs(finalCod - originalPrice) > 0.01) {
+        bookedCodToSave = finalCod;
+      }
+    }
+    const bookingPayload = { ...order, price: finalCod, is_prepaid: finalCod === 0 };
 
-    // 1. Create booking in PostEx (with Pickup Location & Slip Remarks)
+    // 1. Create booking in PostEx (with Pickup Location, Slip Remarks & Optional Custom COD)
     const trackingNumber = await createPostExOrder(order, bookingPayload, {
       pickupAddressCode: resolvedPickup,
       remarks: resolvedRemarks,
+      codAmount: finalCod,
       weight,
     });
 
-    // 2. Update local database (persist tracking, city, remarks & pickup code)
+    // 2. Update local database (persist tracking, city, remarks, pickup code & booked_cod_amount — NEVER overwrite order.price)
     db.prepare(`
       UPDATE orders
       SET tracking_number = ?, courier = ?, delivery_status = 'Booked',
-          city = ?, courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
+          city = ?, courier_remarks = ?, pickup_address_code = ?, booked_cod_amount = ?, status_date = datetime('now')
       WHERE id = ?
-    `).run(trackingNumber, 'PostEx', order.city, resolvedRemarks, resolvedPickup, req.params.id);
+    `).run(trackingNumber, 'PostEx', order.city, resolvedRemarks, resolvedPickup, bookedCodToSave, req.params.id);
 
     // 2b. Autopilot FIFO batch consume & cost lock
     try {
@@ -603,7 +618,7 @@ exports.bookPostex = async (req, res) => {
 
     broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
 
-    res.json({ success: true, tracking_number: trackingNumber, prepaid: isPrepaid, shopifyFulfilled, shopifyError });
+    res.json({ success: true, tracking_number: trackingNumber, prepaid: finalCod === 0, cod_amount: finalCod, booked_cod_amount: bookedCodToSave, shopifyFulfilled, shopifyError });
   } catch (err) {
     console.error('PostEx Booking Error:', err.message);
     res.status(500).json({ error: err.message });
@@ -614,7 +629,7 @@ exports.bookInstaworld = async (req, res) => {
   const { createInstaworldOrder } = require('../engines/instaworld');
   const { fulfillShopifyOrder } = require('../engines/shopify');
   const { getBestMatch } = require('../engines/logistics');
-  const { account_type, pickup_address, pickup_address_code, remarks, weight, city } = req.body || {};
+  const { account_type, pickup_address, pickup_address_code, remarks, weight, city, cod_amount } = req.body || {};
 
   try {
     const order = db.prepare(`
@@ -648,9 +663,23 @@ exports.bookInstaworld = async (req, res) => {
       remarks !== undefined ? remarks : (order.courier_remarks || order.default_courier_remarks || '')
     ).trim();
 
-    // Prepaid Protection: Never charge COD on Paid orders
+    // Prepaid Protection + Optional Per-Order Custom COD Override (keeps original order.price intact for PNL/Advance audit!)
+    const originalPrice = parseFloat(order.price) || 0;
     const isPrepaid = ['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase());
-    const bookingPayload = isPrepaid ? { ...order, price: 0, is_prepaid: true } : order;
+    const hasCustomCod = cod_amount !== undefined && cod_amount !== null && String(cod_amount).trim() !== '';
+    let finalCod = isPrepaid ? 0 : originalPrice;
+    let bookedCodToSave = null;
+    if (hasCustomCod) {
+      const parsedCod = Number(cod_amount);
+      if (!Number.isFinite(parsedCod) || parsedCod < 0) {
+        return res.status(400).json({ error: 'Invalid COD amount: must be 0 or greater' });
+      }
+      finalCod = Math.round(parsedCod * 100) / 100;
+      if (Math.abs(finalCod - originalPrice) > 0.01) {
+        bookedCodToSave = finalCod;
+      }
+    }
+    const bookingPayload = { ...order, price: finalCod, is_prepaid: finalCod === 0 };
 
     let apiKey = order.instaworld_key;
     if (account_type === 'backup') {
@@ -663,16 +692,17 @@ exports.bookInstaworld = async (req, res) => {
     const trackingNumber = await createInstaworldOrder(order, bookingPayload, 'TCS', apiKey, {
       pickupAddress: resolvedPickup,
       remarks: resolvedRemarks,
+      codAmount: finalCod,
       weight,
     });
 
-    // 2. Update local database (persist tracking, city, remarks & pickup address)
+    // 2. Update local database (persist tracking, city, remarks, pickup address & booked_cod_amount — NEVER overwrite order.price)
     db.prepare(`
       UPDATE orders
       SET tracking_number = ?, courier = ?, delivery_status = 'Booked',
-          city = ?, courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
+          city = ?, courier_remarks = ?, pickup_address_code = ?, booked_cod_amount = ?, status_date = datetime('now')
       WHERE id = ?
-    `).run(trackingNumber, 'Instaworld', order.city, resolvedRemarks, resolvedPickup, req.params.id);
+    `).run(trackingNumber, 'Instaworld', order.city, resolvedRemarks, resolvedPickup, bookedCodToSave, req.params.id);
 
     // 2b. Autopilot FIFO batch consume & cost lock
     try {
@@ -696,7 +726,7 @@ exports.bookInstaworld = async (req, res) => {
 
     broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
 
-    res.json({ success: true, tracking_number: trackingNumber, prepaid: isPrepaid, shopifyFulfilled, shopifyError });
+    res.json({ success: true, tracking_number: trackingNumber, prepaid: finalCod === 0, cod_amount: finalCod, booked_cod_amount: bookedCodToSave, shopifyFulfilled, shopifyError });
   } catch (err) {
     console.error('Instaworld Booking Error:', err.message);
     res.status(500).json({ error: err.message });
@@ -765,6 +795,7 @@ async function cancelOrderBookingCore(orderId, actor = 'CancelBooking', options 
     SET tracking_number = NULL,
         courier = NULL,
         courier_status = NULL,
+        booked_cod_amount = NULL,
         delivery_status = 'Confirmed',
         tags = ?,
         status_date = datetime('now')

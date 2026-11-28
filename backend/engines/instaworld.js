@@ -23,6 +23,11 @@ async function createInstaworldOrder(store, order, courierName = 'TCS', targetKe
         : (order.pickup_address_code || store.instaworld_pickup_address || '')
     ).trim();
 
+    const hasCustomCod = options.codAmount !== undefined && options.codAmount !== null && options.codAmount !== '' && Number.isFinite(Number(options.codAmount));
+    const codAmount = hasCustomCod
+      ? Math.max(0, Math.round(Number(options.codAmount) * 100) / 100)
+      : (parseFloat(order.price) || 0);
+
     const payload = {
       shipper_name: store.store_name || store.shop_domain,
       consignee_name: order.customer_name,
@@ -30,7 +35,7 @@ async function createInstaworldOrder(store, order, courierName = 'TCS', targetKe
       consignee_address: order.address,
       consignee_city: (order.city || '').trim(),
       order_id: order.ref_number || String(order.shopify_order_id),
-      cod_amount: parseFloat(order.price) || 0,
+      cod_amount: codAmount,
       weight: parseFloat(options.weight || order.postex_weight) || 0.5,
       pieces: Math.max(1, parseInt(order.items_count, 10) || 1),
       description: order.product_titles || 'General Items',

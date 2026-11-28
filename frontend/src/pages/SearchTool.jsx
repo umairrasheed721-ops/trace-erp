@@ -2099,11 +2099,14 @@ export default function SearchTool() {
             setStores(prev => prev.map(s => s.id === activeStore.id ? { ...s, ...saved } : s))
           }
         }}
-        onBookingSubmitted={({ mode, orderId, data, courier, remarks, pickupCode, city, ids, perOrderCity }) => {
+        onBookingSubmitted={({ mode, orderId, data, courier, remarks, pickupCode, city, bookedCod, ids, perOrderCity, perOrderCod }) => {
           if (mode === 'single' && orderId && data) {
+            const codNote = bookedCod !== null && bookedCod !== undefined
+              ? ` · Custom COD Rs ${Math.round(Number(bookedCod)).toLocaleString()}`
+              : (data.prepaid ? ' (Prepaid COD=0)' : '')
             const msg = data.shopifyFulfilled === false
-              ? `✅ Booked (${data.tracking_number}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
-              : `✅ Booked! Tracking: ${data.tracking_number}${data.prepaid ? ' (Prepaid COD=0)' : ''}`
+              ? `✅ Booked (${data.tracking_number}${codNote}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
+              : `✅ Booked! Tracking: ${data.tracking_number}${codNote}`
             addToast(msg, data.shopifyFulfilled === false ? 'warning' : 'success')
             setAllOrders(prev => prev.map(o => o.id === orderId ? {
               ...o,
@@ -2113,12 +2116,21 @@ export default function SearchTool() {
               city: city || o.city,
               courier_remarks: remarks ?? o.courier_remarks,
               pickup_address_code: pickupCode ?? o.pickup_address_code,
+              booked_cod_amount: bookedCod !== undefined ? bookedCod : o.booked_cod_amount,
             } : o))
             setSelectedIds(prev => prev.filter(x => x !== orderId))
             fetchBacklogDates()
           } else if (mode === 'bulk') {
-            if (perOrderCity && Object.keys(perOrderCity).length > 0) {
-              setAllOrders(prev => prev.map(o => perOrderCity[String(o.id)] ? { ...o, city: perOrderCity[String(o.id)] } : o))
+            const hasCityUpdates = perOrderCity && Object.keys(perOrderCity).length > 0
+            const hasCodUpdates = perOrderCod && Object.keys(perOrderCod).length > 0
+            if (hasCityUpdates || hasCodUpdates) {
+              setAllOrders(prev => prev.map(o => {
+                const key = String(o.id)
+                const nextCity = hasCityUpdates && perOrderCity[key] ? perOrderCity[key] : o.city
+                const nextCod = hasCodUpdates && Object.prototype.hasOwnProperty.call(perOrderCod, key) ? perOrderCod[key] : o.booked_cod_amount
+                if (nextCity === o.city && nextCod === o.booked_cod_amount) return o
+                return { ...o, city: nextCity, booked_cod_amount: nextCod }
+              }))
             }
             addToast(`🚀 Background Booking Started for ${ids?.length || 0} orders! Check Topbar.`, 'info')
             setSelectedIds([])

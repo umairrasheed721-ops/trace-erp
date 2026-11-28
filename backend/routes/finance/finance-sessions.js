@@ -355,10 +355,14 @@ router.post('/bulk-update', async (req, res) => {
         const freightBreakdown = Math.round((freightAndGst / 1.15) * 100) / 100;
         const gstBreakdown = Math.round((freightAndGst - freightBreakdown) * 100) / 100;
 
-        // Rule 22: COD Variance Check (ABS(price - paid_amount) > 0.9 PKR)
+        // Rule 22: COD Variance Check (ABS(price - paid_amount) > 0.9 PKR — intentionally preserved so owner cross-verifies bank advance!)
         const orderPrice = Number(order.price) || 0;
+        const bookedCod = (order.booked_cod_amount !== null && order.booked_cod_amount !== undefined)
+          ? Number(order.booked_cod_amount)
+          : null;
         const variance = type === 'D' ? Math.round((amount - orderPrice) * 100) / 100 : 0;
         const hasVariance = type === 'D' && orderPrice > 0 && Math.abs(variance) > PAYMENT_VARIANCE_TOLERANCE;
+        const matchedBookedCod = Boolean(hasVariance && bookedCod !== null && Math.abs(amount - bookedCod) <= PAYMENT_VARIANCE_TOLERANCE);
         if (hasVariance) varianceCount++;
 
         const logData = {
@@ -389,11 +393,15 @@ router.post('/bulk-update', async (req, res) => {
               codAmount: amount,
               charges,
               orderPrice,
+              bookedCod,
+              matchedBookedCod,
               variance,
               hasVariance,
               status: hasVariance ? '⚠️ Preview (Variance)' : '🔍 Preview Ready',
               recommendation: hasVariance
-                ? `COD ${variance < 0 ? 'Shortfall' : 'Surplus'} Rs. ${Math.abs(variance).toLocaleString()} (Order Rs. ${orderPrice.toLocaleString()} vs Sheet Rs. ${amount.toLocaleString()})`
+                ? (matchedBookedCod
+                    ? `Booked COD Rs. ${bookedCod.toLocaleString()} matched courier · Verify Rs. ${Math.abs(variance).toLocaleString()} advance in bank (Order Rs. ${orderPrice.toLocaleString()})`
+                    : `COD ${variance < 0 ? 'Shortfall' : 'Surplus'} Rs. ${Math.abs(variance).toLocaleString()} (Order Rs. ${orderPrice.toLocaleString()} vs Sheet Rs. ${amount.toLocaleString()})`)
                 : 'Ready to mark Delivered & Paid',
               netPayout,
               courierName: order.courier,
@@ -462,7 +470,9 @@ router.post('/bulk-update', async (req, res) => {
 
             let rec = !syncToShopify ? '✅ ERP Recorded' : (shouldCapture ? '✅ Full Sync' : '✅ ERP Updated (Shopify Skipped)');
             if (hasVariance) {
-              rec += ` · ${variance < 0 ? 'Shortfall' : 'Surplus'} Rs. ${Math.abs(variance).toLocaleString()}`;
+              rec += matchedBookedCod
+                ? ` · Booked COD Rs. ${bookedCod.toLocaleString()} Matched (Verify Rs. ${Math.abs(variance).toLocaleString()} Advance)`
+                : ` · ${variance < 0 ? 'Shortfall' : 'Surplus'} Rs. ${Math.abs(variance).toLocaleString()}`;
             }
 
             results.push({
@@ -474,6 +484,8 @@ router.post('/bulk-update', async (req, res) => {
               codAmount: amount,
               charges,
               orderPrice,
+              bookedCod,
+              matchedBookedCod,
               variance,
               hasVariance,
               status: hasVariance ? '⚠️ Done (Variance)' : '✅ Done',

@@ -163,7 +163,7 @@ router.post('/bulk-revert', async (req, res) => {
 
 // POST /api/orders/bulk-book-postex
 router.post('/bulk-book-postex', async (req, res) => {
-  const { ids, pickup_address_code = '', default_remarks = '', per_order_remarks = {} } = req.body || {};
+  const { ids, pickup_address_code = '', default_remarks = '', per_order_remarks = {}, per_order_cod = {} } = req.body || {};
   const { createPostExOrder } = require('../../engines/postex');
   const { fulfillShopifyOrder } = require('../../engines/shopify');
   const { getBestMatch } = require('../../engines/logistics');
@@ -177,12 +177,15 @@ router.post('/bulk-book-postex', async (req, res) => {
 
       const matchedCity = getBestMatch(order.city, 'PostEx');
       if (matchedCity) order.city = matchedCity;
-      if (['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase())) {
-        order.price = 0;
-        order.is_prepaid = true;
-      }
-
+      const originalPrice = parseFloat(order.price) || 0;
+      const isPrepaid = ['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase());
       const idKey = String(id);
+      const rawCustomCod = Object.prototype.hasOwnProperty.call(per_order_cod || {}, idKey) ? per_order_cod[idKey] : undefined;
+      const hasCustomCod = rawCustomCod !== undefined && rawCustomCod !== null && String(rawCustomCod).trim() !== '' && Number.isFinite(Number(rawCustomCod)) && Number(rawCustomCod) >= 0;
+      const finalCod = hasCustomCod ? Math.round(Number(rawCustomCod) * 100) / 100 : (isPrepaid ? 0 : originalPrice);
+      const bookedCodToSave = hasCustomCod && Math.abs(finalCod - originalPrice) > 0.01 ? finalCod : null;
+      const bookingOrder = { ...order, price: finalCod, is_prepaid: finalCod === 0 };
+
       const resolvedRemarks = String(
         Object.prototype.hasOwnProperty.call(per_order_remarks || {}, idKey)
           ? per_order_remarks[idKey]
@@ -190,16 +193,17 @@ router.post('/bulk-book-postex', async (req, res) => {
       ).trim();
       const resolvedPickup = String(pickup_address_code || order.pickup_address_code || order.postex_pickup_code || '').trim();
 
-      const trackingNumber = await createPostExOrder(order, order, {
+      const trackingNumber = await createPostExOrder(order, bookingOrder, {
         pickupAddressCode: resolvedPickup,
         remarks: resolvedRemarks,
+        codAmount: finalCod,
       });
       db.prepare(`
         UPDATE orders
         SET tracking_number = ?, courier = ?, delivery_status = 'Booked',
-            courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
+            courier_remarks = ?, pickup_address_code = ?, booked_cod_amount = ?, status_date = datetime('now')
         WHERE id = ?
-      `).run(trackingNumber, 'PostEx', resolvedRemarks, resolvedPickup, id);
+      `).run(trackingNumber, 'PostEx', resolvedRemarks, resolvedPickup, bookedCodToSave, id);
       try {
         const { allocateOrderFifoOnDispatch } = require('../../services/poLedgerService');
         allocateOrderFifoOnDispatch(id, req.user?.username || 'BulkPostEx');
@@ -315,7 +319,7 @@ router.post('/bulk-sync-courier', async (req, res) => {
 
 // POST /api/orders/bulk-book-instaworld
 router.post('/bulk-book-instaworld', async (req, res) => {
-  const { ids, courier_name } = req.body;
+  const { ids, courier_name, per_order_cod = {} } = req.body || {};
   const { createInstaworldOrder } = require('../../engines/instaworld');
   const { fulfillShopifyOrder } = require('../../engines/shopify');
   const { getBestMatch } = require('../../engines/logistics');
@@ -329,13 +333,17 @@ router.post('/bulk-book-instaworld', async (req, res) => {
 
       const matchedCity = getBestMatch(order.city, 'Instaworld');
       if (matchedCity) order.city = matchedCity;
-      if (['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase())) {
-        order.price = 0;
-        order.is_prepaid = true;
-      }
+      const originalPrice = parseFloat(order.price) || 0;
+      const isPrepaid = ['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase());
+      const idKey = String(id);
+      const rawCustomCod = Object.prototype.hasOwnProperty.call(per_order_cod || {}, idKey) ? per_order_cod[idKey] : undefined;
+      const hasCustomCod = rawCustomCod !== undefined && rawCustomCod !== null && String(rawCustomCod).trim() !== '' && Number.isFinite(Number(rawCustomCod)) && Number(rawCustomCod) >= 0;
+      const finalCod = hasCustomCod ? Math.round(Number(rawCustomCod) * 100) / 100 : (isPrepaid ? 0 : originalPrice);
+      const bookedCodToSave = hasCustomCod && Math.abs(finalCod - originalPrice) > 0.01 ? finalCod : null;
+      const bookingOrder = { ...order, price: finalCod, is_prepaid: finalCod === 0 };
 
-      const trackingNumber = await createInstaworldOrder(order, order, courier_name);
-      db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, courier_name, id);
+      const trackingNumber = await createInstaworldOrder(order, bookingOrder, courier_name, null, { codAmount: finalCod });
+      db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', booked_cod_amount = ?, status_date = datetime('now') WHERE id = ?").run(trackingNumber, courier_name, bookedCodToSave, id);
       try {
         const { allocateOrderFifoOnDispatch } = require('../../services/poLedgerService');
         allocateOrderFifoOnDispatch(id, req.user?.username || 'BulkInstaworld');

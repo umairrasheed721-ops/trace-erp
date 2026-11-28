@@ -390,7 +390,7 @@ const CourierBooking = React.memo(({
                 {trackingNumber} 📋
               </button>
 
-              {(editingOrder?.pickup_address_code || editingOrder?.courier_remarks) && (
+              {(editingOrder?.pickup_address_code || editingOrder?.courier_remarks || (editingOrder?.booked_cod_amount !== null && editingOrder?.booked_cod_amount !== undefined)) && (
                 <div style={{
                   background: 'var(--bg-elevated)',
                   border: '1px solid var(--border)',
@@ -401,6 +401,17 @@ const CourierBooking = React.memo(({
                   flexDirection: 'column',
                   gap: 4,
                 }}>
+                  {editingOrder?.booked_cod_amount !== null && editingOrder?.booked_cod_amount !== undefined && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>💵 Booked COD: </span>
+                      <span style={{ color: '#b45309', fontWeight: 800 }}>
+                        Rs {Math.round(Number(editingOrder.booked_cod_amount) || 0).toLocaleString()}
+                      </span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginLeft: 5 }}>
+                        (Full: Rs {Math.round(Number(editingOrder.price) || 0).toLocaleString()} · Adv Diff: Rs {Math.round((Number(editingOrder.price) || 0) - (Number(editingOrder.booked_cod_amount) || 0)).toLocaleString()})
+                      </span>
+                    </div>
+                  )}
                   {editingOrder?.pickup_address_code && (
                     <div>
                       <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>📍 Pickup Code: </span>

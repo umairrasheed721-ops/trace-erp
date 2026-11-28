@@ -58,6 +58,10 @@ async function createPostExOrder(store, order, options = {}) {
       : (order.courier_remarks || store.default_courier_remarks || '');
     const transactionNotes = String(rawRemarks || '').trim().slice(0, 250);
     const itemsQty = Math.max(1, parseInt(order.items_count, 10) || 1);
+    const hasCustomCod = options.codAmount !== undefined && options.codAmount !== null && options.codAmount !== '' && Number.isFinite(Number(options.codAmount));
+    const invoicePayment = hasCustomCod
+      ? Math.max(0, Math.round(Number(options.codAmount) * 100) / 100)
+      : (parseFloat(order.price) || 0);
 
     const payload = {
       customerName: order.customer_name,
@@ -66,7 +70,7 @@ async function createPostExOrder(store, order, options = {}) {
       cityName: city,
       orderDetail: order.product_titles || 'General Items',
       orderRefNumber: order.ref_number || String(order.shopify_order_id),
-      invoicePayment: parseFloat(order.price) || 0,
+      invoicePayment,
       orderType: 'COD', // Default to Cash on Delivery
       items: itemsQty,
       itemsCount: itemsQty,

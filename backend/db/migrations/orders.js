@@ -1543,6 +1543,19 @@ module.exports = [
     } catch (e) {
       console.error('Migration #55 failed:', e.message);
     }
+  },
+
+  // 56. Add booked_cod_amount column for optional per-order custom COD booking (e.g. partial advance received)
+  (db) => {
+    try {
+      const orderCols = db.prepare('PRAGMA table_info(orders)').all().map(c => c.name);
+      if (!orderCols.includes('booked_cod_amount')) {
+        db.exec('ALTER TABLE orders ADD COLUMN booked_cod_amount REAL DEFAULT NULL');
+      }
+      console.log('✅ [Migration #56] booked_cod_amount column verified.');
+    } catch (e) {
+      console.error('Migration #56 failed:', e.message);
+    }
   }
 ];
 

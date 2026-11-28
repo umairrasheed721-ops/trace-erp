@@ -169,9 +169,26 @@ export const PaidAmountCell = React.memo(function PaidAmountCell({ order, onSave
     }
   }
 
+  const bookedCod = (order.booked_cod_amount !== null && order.booked_cod_amount !== undefined)
+    ? parseFloat(order.booked_cod_amount)
+    : null
+  const showCustomCodHint = bookedCod !== null
+    && Number.isFinite(bookedCod)
+    && Math.abs(bookedCod - orderPrice) > 0.9
+    && Math.abs(paidAmt - orderPrice) > 0.9
+  const advDiff = showCustomCodHint ? Math.round(orderPrice - bookedCod) : 0
+
   return (
     <div onClick={() => { setIsEditing(true); if (onInteraction) onInteraction(); }} style={{ cursor: 'pointer', fontWeight: 600 }}>
       <div>Rs {Math.round(paidAmt).toLocaleString()}</div>
+      {showCustomCodHint && (
+        <div
+          style={{ fontSize: '0.63rem', color: '#b45309', fontWeight: 700, marginTop: '2px', lineHeight: 1.2 }}
+          title={`Booked COD Rs ${Math.round(bookedCod).toLocaleString()} vs Order Price Rs ${Math.round(orderPrice).toLocaleString()}. Cross-verify Rs ${Math.abs(advDiff).toLocaleString()} advance in bank, then click to mark full paid.`}
+        >
+          💵 COD Rs {Math.round(bookedCod).toLocaleString()}{advDiff > 0 ? ` · Adv ${advDiff.toLocaleString()}` : ''}
+        </div>
+      )}
       {surplusAmt > 0.9 && (
         <div style={{ fontSize: '0.65rem', color: '#eab308', fontWeight: 700, marginTop: '2px' }} title="Surplus cash collected from courier">
           ⚡ Surplus: +Rs {Math.round(surplusAmt).toLocaleString()}

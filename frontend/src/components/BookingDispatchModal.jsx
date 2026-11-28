@@ -359,11 +359,25 @@ export default function BookingDispatchModal({
   const [remarksById, setRemarksById] = useState({});
   const [pickupById, setPickupById] = useState({});
   const [cityById, setCityById] = useState({});
+  const [codById, setCodById] = useState({});
+  const [editingCodId, setEditingCodId] = useState(null);
   const [validCities, setValidCities] = useState([]);
   const [filterText, setFilterText] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const validCitySet = useMemo(() => new Set(validCities.map(c => String(c || '').trim().toLowerCase())), [validCities]);
+
+  const getOrderCodInfo = (ord) => {
+    const fullPrice = Math.round((parseFloat(ord.price) || 0) * 100) / 100;
+    const isPrepaid = ['paid', 'payment posted'].includes(String(ord.payment_status || '').toLowerCase());
+    const defaultCod = isPrepaid ? 0 : fullPrice;
+    const raw = codById[ord.id];
+    const hasOverride = raw !== undefined && raw !== null && String(raw).trim() !== '' && Number.isFinite(Number(raw)) && Number(raw) >= 0;
+    const effectiveCod = hasOverride ? Math.round(Number(raw) * 100) / 100 : defaultCod;
+    const isCustom = hasOverride && Math.abs(effectiveCod - defaultCod) > 0.01;
+    const advanceDiff = Math.round((fullPrice - effectiveCod) * 100) / 100;
+    return { fullPrice, isPrepaid, defaultCod, effectiveCod, isCustom, advanceDiff };
+  };
 
   // Initialize per-order states whenever modal opens with a new selection
   useEffect(() => {
@@ -373,6 +387,7 @@ export default function BookingDispatchModal({
     const nextRemarks = {};
     const nextPickup = {};
     const nextCity = {};
+    const nextCod = {};
 
     orders.forEach((o) => {
       const blocked = getOrderBlockReason(o, o.city);
@@ -382,12 +397,17 @@ export default function BookingDispatchModal({
         : defaultRem;
       nextPickup[o.id] = o.pickup_address_code || '';
       nextCity[o.id] = o.city || '';
+      if (o.booked_cod_amount !== null && o.booked_cod_amount !== undefined && Number.isFinite(Number(o.booked_cod_amount))) {
+        nextCod[o.id] = String(o.booked_cod_amount);
+      }
     });
 
     setIncludedIds(nextIncluded);
     setRemarksById(nextRemarks);
     setPickupById(nextPickup);
     setCityById(nextCity);
+    setCodById(nextCod);
+    setEditingCodId(null);
     setBatchRemark(defaultRem);
     setPickupCode(activeStore?.postex_pickup_code || '');
     setManualPickupCode('');
@@ -505,6 +525,9 @@ export default function BookingDispatchModal({
   }, [orderStates, includedIds]);
 
   const blockedCount = useMemo(() => orderStates.filter(x => Boolean(x.blocked)).length, [orderStates]);
+  const customCodCount = useMemo(() => {
+    return readyOrders.filter((o) => getOrderCodInfo(o).isCustom).length;
+  }, [readyOrders, codById]);
 
   const visibleOrderStates = useMemo(() => {
     const q = filterText.trim().toLowerCase();
@@ -567,12 +590,16 @@ export default function BookingDispatchModal({
         const ordRemark = String(remarksById[ord.id] || '').trim();
         const ordPickup = String(pickupById[ord.id] || resolvedBatchPickup || '').trim();
         const ordCity = String(cityById[ord.id] !== undefined ? cityById[ord.id] : (ord.city || '')).trim();
+        const codInfo = getOrderCodInfo(ord);
         const endpoint = meta.isPostEx
           ? `${apiUrl}/api/orders/${ord.id}/book-postex`
           : `${apiUrl}/api/orders/${ord.id}/book-instaworld`;
         const payload = meta.isPostEx
           ? { pickup_address_code: ordPickup, remarks: ordRemark, city: ordCity }
           : { account_type: meta.accountType, pickup_address: ordPickup, remarks: ordRemark, city: ordCity };
+        if (codInfo.isCustom) {
+          payload.cod_amount = codInfo.effectiveCod;
+        }
 
         const res = await fetch(endpoint, { method: 'POST', headers: authHeaders, body: JSON.stringify(payload) });
         const data = await res.json().catch(() => ({}));
@@ -589,22 +616,26 @@ export default function BookingDispatchModal({
             remarks: ordRemark,
             pickupCode: ordPickup,
             city: ordCity,
+            bookedCod: data.booked_cod_amount !== undefined ? data.booked_cod_amount : (codInfo.isCustom ? codInfo.effectiveCod : null),
           });
         }
         onClose();
         return;
       }
 
-      // Multi-order bulk booking with batch pickup + per-order city, remarks & pickup overrides
+      // Multi-order bulk booking with batch pickup + per-order city, custom COD, remarks & pickup overrides
       const perOrderRemarks = {};
       const perOrderPickup = {};
       const perOrderCity = {};
+      const perOrderCod = {};
       readyOrders.forEach((o) => {
         perOrderRemarks[String(o.id)] = String(remarksById[o.id] || '').trim();
         const p = String(pickupById[o.id] || '').trim();
         if (p) perOrderPickup[String(o.id)] = p;
         const c = String(cityById[o.id] !== undefined ? cityById[o.id] : (o.city || '')).trim();
         if (c) perOrderCity[String(o.id)] = c;
+        const codInfo = getOrderCodInfo(o);
+        if (codInfo.isCustom) perOrderCod[String(o.id)] = codInfo.effectiveCod;
       });
 
       const res = await fetch(`${apiUrl}/api/bulk/book`, {
@@ -619,6 +650,7 @@ export default function BookingDispatchModal({
           per_order_remarks: perOrderRemarks,
           per_order_pickup: perOrderPickup,
           per_order_city: perOrderCity,
+          per_order_cod: perOrderCod,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -633,6 +665,7 @@ export default function BookingDispatchModal({
           courier,
           pickupCode: resolvedBatchPickup,
           perOrderCity,
+          perOrderCod,
         });
       }
       onClose();
@@ -909,7 +942,9 @@ export default function BookingDispatchModal({
 
           {visibleOrderStates.map(({ order, blocked }) => {
             const checked = !blocked && Boolean(includedIds[order.id]);
-            const isPrepaid = ['paid', 'payment posted'].includes(String(order.payment_status || '').toLowerCase());
+            const codInfo = getOrderCodInfo(order);
+            const { fullPrice, isPrepaid, effectiveCod, isCustom, advanceDiff } = codInfo;
+            const isEditingCod = editingCodId === order.id;
             const remVal = remarksById[order.id] || '';
             const cityVal = cityById[order.id] !== undefined ? cityById[order.id] : (order.city || '');
             const isHardBlocked = blocked && blocked.code !== 'city';
@@ -959,17 +994,181 @@ export default function BookingDispatchModal({
                     }}
                   />
 
-                  <span style={{
-                    marginLeft: 'auto',
-                    fontSize: '0.74rem',
-                    fontWeight: 800,
-                    padding: '2px 8px',
-                    borderRadius: 6,
-                    background: isPrepaid ? 'rgba(16,185,129,0.14)' : 'var(--bg-elevated)',
-                    color: isPrepaid ? '#059669' : 'var(--text-primary)',
-                  }}>
-                    {isPrepaid ? '💳 PREPAID (Rs 0)' : `💵 COD Rs ${Math.round(parseFloat(order.price) || 0).toLocaleString()}`}
-                  </span>
+                  {/* Optional Per-Order Custom COD Override (click pill only when customer paid advance / partial COD) */}
+                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                    {isEditingCod && !isHardBlocked ? (
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '2px 6px',
+                        borderRadius: 8,
+                        border: '1.5px solid #6366f1',
+                        background: 'var(--bg-elevated)',
+                      }}>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#6366f1' }}>COD Rs</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          autoFocus
+                          value={codById[order.id] !== undefined ? codById[order.id] : String(Math.round(effectiveCod))}
+                          onChange={(e) => setCodById(prev => ({ ...prev, [order.id]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === 'Escape') {
+                              e.preventDefault();
+                              setEditingCodId(null);
+                            }
+                          }}
+                          style={{
+                            width: 72,
+                            fontSize: '0.75rem',
+                            fontWeight: 800,
+                            padding: '2px 5px',
+                            borderRadius: 5,
+                            border: '1px solid var(--border-bright)',
+                            background: 'var(--bg-surface)',
+                            color: 'var(--text-primary)',
+                            outline: 'none',
+                          }}
+                        />
+                        {Math.abs(advanceDiff) > 0.01 && (
+                          <span
+                            title={advanceDiff > 0 ? `Advance difference Rs ${advanceDiff.toLocaleString()} (PNL will keep full Rs ${fullPrice.toLocaleString()} for bank cross-check)` : `Extra Rs ${Math.abs(advanceDiff).toLocaleString()} above order price`}
+                            style={{
+                              fontSize: '0.66rem',
+                              fontWeight: 800,
+                              padding: '1px 5px',
+                              borderRadius: 5,
+                              background: advanceDiff > 0 ? 'rgba(245,158,11,0.16)' : 'rgba(99,102,241,0.14)',
+                              color: advanceDiff > 0 ? '#b45309' : '#6366f1',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {advanceDiff > 0 ? `Adv: Rs ${Math.round(advanceDiff).toLocaleString()}` : `+Rs ${Math.round(Math.abs(advanceDiff)).toLocaleString()}`}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setCodById(prev => ({ ...prev, [order.id]: '0' }))}
+                          title="Set COD to Rs 0 (Full advance received)"
+                          style={{
+                            fontSize: '0.66rem', fontWeight: 800, padding: '2px 5px', borderRadius: 5,
+                            border: '1px solid var(--border)', background: 'var(--bg-surface)',
+                            color: '#059669', cursor: 'pointer',
+                          }}
+                        >
+                          Rs 0
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCodId(null)}
+                          title="Done editing COD"
+                          style={{
+                            fontSize: '0.7rem', fontWeight: 800, padding: '2px 6px', borderRadius: 5,
+                            border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer',
+                          }}
+                        >
+                          ✓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCodById(prev => {
+                              const next = { ...prev };
+                              delete next[order.id];
+                              return next;
+                            });
+                            setEditingCodId(null);
+                          }}
+                          title={`Reset to full price (Rs ${Math.round(fullPrice).toLocaleString()})`}
+                          style={{
+                            fontSize: '0.7rem', fontWeight: 800, padding: '2px 5px', borderRadius: 5,
+                            border: '1px solid var(--border)', background: 'transparent',
+                            color: 'var(--text-muted)', cursor: 'pointer',
+                          }}
+                        >
+                          ↺
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          disabled={isHardBlocked}
+                          onClick={() => {
+                            if (codById[order.id] === undefined) {
+                              setCodById(prev => ({ ...prev, [order.id]: String(Math.round(effectiveCod)) }));
+                            }
+                            setEditingCodId(order.id);
+                          }}
+                          title={isCustom
+                            ? `Custom COD Rs ${Math.round(effectiveCod).toLocaleString()} (Order Full Price Rs ${Math.round(fullPrice).toLocaleString()} intact for PNL cross-check). Click to edit.`
+                            : 'Click to book with a custom COD amount (e.g. customer paid partial advance)'}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            padding: '3px 8px',
+                            borderRadius: 7,
+                            cursor: isHardBlocked ? 'default' : 'pointer',
+                            border: isCustom
+                              ? '1px solid rgba(245,158,11,0.55)'
+                              : `1px solid ${isPrepaid ? 'rgba(16,185,129,0.35)' : 'var(--border)'}`,
+                            background: isCustom
+                              ? 'rgba(245,158,11,0.14)'
+                              : (isPrepaid ? 'rgba(16,185,129,0.14)' : 'var(--bg-elevated)'),
+                            color: isCustom
+                              ? '#b45309'
+                              : (isPrepaid ? '#059669' : 'var(--text-primary)'),
+                          }}
+                        >
+                          {isCustom ? (
+                            <>
+                              <span>💵 COD Rs {Math.round(effectiveCod).toLocaleString()}</span>
+                              <span style={{ textDecoration: 'line-through', opacity: 0.6, fontSize: '0.68rem', fontWeight: 600 }}>
+                                Rs {Math.round(fullPrice).toLocaleString()}
+                              </span>
+                              {advanceDiff > 0.01 && (
+                                <span style={{
+                                  fontSize: '0.65rem', padding: '0 4px', borderRadius: 4,
+                                  background: 'rgba(180,83,9,0.15)', color: '#92400e',
+                                }}>
+                                  Adv {Math.round(advanceDiff).toLocaleString()}
+                                </span>
+                              )}
+                              {!isHardBlocked && <span style={{ opacity: 0.7, fontSize: '0.68rem' }}>✏️</span>}
+                            </>
+                          ) : (
+                            <>
+                              <span>{isPrepaid ? '💳 PREPAID (Rs 0)' : `💵 COD Rs ${Math.round(fullPrice).toLocaleString()}`}</span>
+                              {!isHardBlocked && <span style={{ opacity: 0.55, fontSize: '0.68rem' }}>✏️</span>}
+                            </>
+                          )}
+                        </button>
+                        {isCustom && !isHardBlocked && (
+                          <button
+                            type="button"
+                            onClick={() => setCodById(prev => {
+                              const next = { ...prev };
+                              delete next[order.id];
+                              return next;
+                            })}
+                            title={`Reset COD back to full Rs ${Math.round(fullPrice).toLocaleString()}`}
+                            style={{
+                              fontSize: '0.68rem', fontWeight: 800, padding: '2px 5px', borderRadius: 6,
+                              border: '1px solid rgba(245,158,11,0.4)', background: 'transparent',
+                              color: '#b45309', cursor: 'pointer',
+                            }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                   {blocked && (
                     <span style={{
                       fontSize: '0.72rem', fontWeight: 800, padding: '2px 8px', borderRadius: 6,
@@ -1091,6 +1290,11 @@ export default function BookingDispatchModal({
             {resolvedBatchPickup && (
               <span>
                 📍 Pickup: <strong style={{ color: 'var(--text-primary)' }}>{resolvedBatchPickup}</strong>
+              </span>
+            )}
+            {customCodCount > 0 && (
+              <span>
+                💵 Custom COD: <strong style={{ color: '#b45309' }}>{customCodCount} order{customCodCount === 1 ? '' : 's'}</strong>
               </span>
             )}
           </div>

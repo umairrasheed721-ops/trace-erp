@@ -606,13 +606,21 @@ export default function FinanceManager() {
                                   Order: Rs. {Number(r.orderPrice).toLocaleString()}
                                 </div>
                               )}
+                              {r.bookedCod !== null && r.bookedCod !== undefined && (
+                                <div style={{ fontSize: '0.67rem', color: '#6366f1', fontWeight: 700 }}>
+                                  Booked COD: Rs. {Number(r.bookedCod).toLocaleString()}
+                                </div>
+                              )}
                               {r.hasVariance && (
                                 <span style={{
                                   display: 'inline-block', marginTop: 3, padding: '1px 6px', borderRadius: 5,
                                   fontSize: '0.66rem', fontWeight: 800,
-                                  background: 'rgba(239,68,68,0.12)', color: '#dc2626'
+                                  background: r.matchedBookedCod ? 'rgba(245,158,11,0.16)' : 'rgba(239,68,68,0.12)',
+                                  color: r.matchedBookedCod ? '#b45309' : '#dc2626'
                                 }}>
-                                  {r.variance < 0 ? `Short -Rs. ${Math.abs(r.variance).toLocaleString()}` : `Surplus +Rs. ${r.variance.toLocaleString()}`}
+                                  {r.matchedBookedCod
+                                    ? `✓ COD Matched · Check Adv Rs. ${Math.abs(r.variance).toLocaleString()}`
+                                    : (r.variance < 0 ? `Short -Rs. ${Math.abs(r.variance).toLocaleString()}` : `Surplus +Rs. ${r.variance.toLocaleString()}`)}
                                 </span>
                               )}
                             </td>
