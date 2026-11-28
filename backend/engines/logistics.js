@@ -64,27 +64,41 @@ function replaceCourierCitiesAtomic(courier, cities) {
   return uniqueCities.length;
 }
 
-function resolveStoreCredentials(isInsta, storeId = null) {
+function resolveCandidateStores(isInsta, storeId = null) {
+  const candidates = [];
+  const seen = new Set();
+
   if (storeId) {
     const specific = db.prepare(`
-      SELECT id, postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3, gas_proxy_url
+      SELECT id, store_name, postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3, gas_proxy_url
       FROM stores WHERE id = ?
     `).get(Number(storeId));
     if (specific) {
       const hasNeeded = isInsta
         ? Boolean(specific.instaworld_key || specific.instaworld_key_backup || specific.instaworld_key_3)
         : Boolean(specific.postex_token && !String(specific.postex_token).includes('****'));
-      if (hasNeeded) return specific;
+      if (hasNeeded) {
+        candidates.push(specific);
+        seen.add(specific.id);
+      }
     }
   }
-  // Courier operational cities are Pakistan-wide: borrow any configured store's active token if selected store has none
+
+  // Courier operational cities are Pakistan-wide: try ALL configured stores with valid tokens so 1 expired/inactive store never blocks sync
   const colCheck = isInsta
     ? "(COALESCE(instaworld_key, '') != '' OR COALESCE(instaworld_key_backup, '') != '' OR COALESCE(instaworld_key_3, '') != '')"
     : "(COALESCE(postex_token, '') != '' AND postex_token NOT LIKE '%****%')";
-  return db.prepare(`
-    SELECT id, postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3, gas_proxy_url
-    FROM stores WHERE ${colCheck} LIMIT 1
-  `).get() || null;
+  const others = db.prepare(`
+    SELECT id, store_name, postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3, gas_proxy_url
+    FROM stores WHERE ${colCheck} ORDER BY id ASC
+  `).all();
+  for (const s of others) {
+    if (!seen.has(s.id)) {
+      candidates.push(s);
+      seen.add(s.id);
+    }
+  }
+  return candidates;
 }
 
 function getHistoricalVerifiedCourierCities(isInsta) {
@@ -113,7 +127,8 @@ function getHistoricalVerifiedCourierCities(isInsta) {
  */
 async function syncCourierCitiesLive(rawCourier, storeId = null) {
   const targetCourier = normalizeCourierKey(rawCourier);
-  const lockKey = `${targetCourier}`;
+  const tenantId = require('../tenant-context').getStore() || 'default';
+  const lockKey = `${tenantId}:${targetCourier}`;
   if (inFlightSyncs.has(lockKey)) {
     return inFlightSyncs.get(lockKey);
   }
@@ -122,22 +137,29 @@ async function syncCourierCitiesLive(rawCourier, storeId = null) {
     const { fetchPostExCitiesDetailed } = require('./postex');
 
     if (targetCourier === 'PostEx') {
-      const store = resolveStoreCredentials(false, storeId);
-      const res = await fetchPostExCitiesDetailed(store?.postex_token || '');
-      if (res.source === 'live' && res.cities.length >= 50) {
-        replaceCourierCitiesAtomic('PostEx', res.cities);
-        console.log(`✅ [CourierCities] Synced ${res.cities.length} LIVE active PostEx cities.`);
-        return {
-          courier: 'PostEx',
-          cities: res.cities,
-          count: res.cities.length,
-          source: 'live',
-          lastSyncedAt: new Date().toISOString(),
-        };
+      const stores = resolveCandidateStores(false, storeId);
+      let lastRes = null;
+      for (const store of stores) {
+        const res = await fetchPostExCitiesDetailed(store.postex_token);
+        lastRes = res;
+        if (res.source === 'live' && res.cities.length >= 50) {
+          replaceCourierCitiesAtomic('PostEx', res.cities);
+          console.log(`✅ [CourierCities] Tenant [${tenantId}] synced ${res.cities.length} LIVE active PostEx cities via Store #${store.id} (${store.store_name || ''}).`);
+          return {
+            courier: 'PostEx',
+            cities: res.cities,
+            count: res.cities.length,
+            source: 'live',
+            lastSyncedAt: new Date().toISOString(),
+          };
+        }
+      }
+      if (!lastRes) {
+        lastRes = await fetchPostExCitiesDetailed('');
       }
       // Do NOT poison DB cache with fallback; return existing cache if any, else fallback
       const existing = db.prepare('SELECT city_name FROM courier_cities WHERE courier = ? ORDER BY city_name ASC').all('PostEx').map(r => r.city_name);
-      const best = existing.length > res.cities.length ? existing : res.cities;
+      const best = existing.length > lastRes.cities.length ? existing : lastRes.cities;
       return {
         courier: 'PostEx',
         cities: best,
@@ -148,16 +170,17 @@ async function syncCourierCitiesLive(rawCourier, storeId = null) {
     }
 
     // Instaworld (TCS / LCS / Leopards / Trax via Instaworld)
-    const iwStore = resolveStoreCredentials(true, storeId);
-    const apiKey = iwStore?.instaworld_key || iwStore?.instaworld_key_backup || iwStore?.instaworld_key_3 || '';
-    if (apiKey) {
+    const iwStores = resolveCandidateStores(true, storeId);
+    for (const iwStore of iwStores) {
+      const apiKey = iwStore.instaworld_key || iwStore.instaworld_key_backup || iwStore.instaworld_key_3 || '';
+      if (!apiKey) continue;
       try {
         const { fetchInstaworldCities } = require('./instaworld');
         const raw = await fetchInstaworldCities(apiKey, iwStore);
         const liveIw = dedupeSortedCities(Array.isArray(raw) ? raw : []);
         if (liveIw.length >= 50) {
           replaceCourierCitiesAtomic('Instaworld', liveIw);
-          console.log(`✅ [CourierCities] Synced ${liveIw.length} LIVE Instaworld cities.`);
+          console.log(`✅ [CourierCities] Tenant [${tenantId}] synced ${liveIw.length} LIVE Instaworld cities.`);
           return {
             courier: 'Instaworld',
             cities: liveIw,
@@ -169,6 +192,7 @@ async function syncCourierCitiesLive(rawCourier, storeId = null) {
       } catch (iwErr) {
         console.warn('⚠️ [CourierCities] Instaworld getCities unavailable, merging live Pakistan operational pool:', iwErr.message);
       }
+      break; // Avoid hitting known 404 endpoint repeatedly across stores
     }
 
     // Compose live Pakistan operational city pool (PostEx 897+ live active cities + verified booked Instaworld cities)

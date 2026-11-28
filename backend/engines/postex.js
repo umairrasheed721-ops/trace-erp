@@ -173,12 +173,16 @@ async function fetchPostExCitiesDetailed(token) {
           headers: { token: cleanToken },
           timeout: 10000,
         });
-        if (!res.ok) continue;
+        if (!res.ok) {
+          console.warn(`⚠️ [PostEx Cities] ${url.split('/order/')[1]} returned HTTP ${res.status}`);
+          continue;
+        }
         const data = await res.json().catch(() => null);
         const names = extractActiveDeliveryCities(data);
         if (names.length >= 50) {
           return { cities: names, source: 'live', count: names.length };
         }
+        console.warn(`⚠️ [PostEx Cities] ${url.split('/order/')[1]} returned ${names.length} cities (statusCode: ${data?.statusCode || 'n/a'})`);
       } catch (err) {
         console.warn(`⚠️ [PostEx Cities] Fetch failed (${url.split('/order/')[1]}):`, err.message);
       }
