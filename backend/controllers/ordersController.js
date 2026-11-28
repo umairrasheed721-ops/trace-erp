@@ -702,8 +702,24 @@ async function cancelOrderBookingCore(orderId, actor = 'CancelBooking', options 
     return { ok: false, status: 500, error: 'Courier API rejected cancellation' };
   }
 
-  // Cancel Shopify fulfillment & remove Ready to Book tag (non-blocking)
+  // Cancel Shopify fulfillment & keep order Confirmed + "Ready to Book" tag (only booking is cancelled, NOT confirmation!)
   const { cancelShopifyFulfillment, READY_TO_BOOK_TAG, mergeOrderTagString, updateShopifyOrderTag } = require('../engines/shopify');
+  const { tags: localTags } = mergeOrderTagString(order.tags, READY_TO_BOOK_TAG, 'add');
+
+  // 1. Update local DB FIRST (prevents webhook race from cancelShopifyFulfillment downgrading status to Pending)
+  // Clear tracking/courier/courier_status (Rule 12) while keeping Confirmed + Ready to Book for re-booking
+  db.prepare(`
+    UPDATE orders
+    SET tracking_number = NULL,
+        courier = NULL,
+        courier_status = NULL,
+        delivery_status = 'Confirmed',
+        tags = ?,
+        status_date = datetime('now')
+    WHERE id = ?
+  `).run(localTags, order.id);
+
+  // 2. Cancel Shopify fulfillment so order becomes Unfulfilled on Shopify
   let shopifyFulfillmentCancelled = false;
   try {
     if (order.shopify_order_id) {
@@ -713,26 +729,19 @@ async function cancelOrderBookingCore(orderId, actor = 'CancelBooking', options 
     console.warn(`⚠️ Failed to cancel Shopify fulfillment for order ${order.shopify_order_id}:`, shopifyErr.message);
   }
 
-  const { tags: localTags } = mergeOrderTagString(order.tags, READY_TO_BOOK_TAG, 'remove');
-  let shopifyTagRemoved = false;
+  // 3. Ensure "Ready to Book" tag is present on Shopify (restores tag if auto-removed when booked)
+  let shopifyTagSynced = false;
+  let finalTags = localTags;
   try {
     if (order.shopify_order_id && order.shop_domain && order.access_token) {
-      const tagRes = await updateShopifyOrderTag(order, order.shopify_order_id, READY_TO_BOOK_TAG, 'remove');
-      shopifyTagRemoved = Boolean(tagRes.ok);
+      const tagRes = await updateShopifyOrderTag(order, order.shopify_order_id, READY_TO_BOOK_TAG, 'add');
+      shopifyTagSynced = Boolean(tagRes.ok);
+      if (tagRes.ok && tagRes.tags !== undefined) {
+        finalTags = tagRes.tags;
+        db.prepare('UPDATE orders SET tags = ? WHERE id = ?').run(finalTags, order.id);
+      }
     }
   } catch (_) {}
-
-  // Reset ERP status cleanly to Pending (Rule 12: clear tracking_number & courier_status alongside Pending)
-  db.prepare(`
-    UPDATE orders
-    SET tracking_number = NULL,
-        courier = NULL,
-        courier_status = NULL,
-        delivery_status = 'Pending',
-        tags = ?,
-        status_date = datetime('now')
-    WHERE id = ?
-  `).run(localTags, order.id);
 
   let fifoRestored = false;
   try {
@@ -752,8 +761,11 @@ async function cancelOrderBookingCore(orderId, actor = 'CancelBooking', options 
     refNumber: order.ref_number || `#${order.id}`,
     cancelledTracking: order.tracking_number,
     courier: order.courier || '',
+    delivery_status: 'Confirmed',
+    tags: finalTags,
     shopifyFulfillmentCancelled,
-    shopifyTagRemoved,
+    shopifyTagSynced,
+    shopifyTagRemoved: false,
     fifoRestored,
   };
 }

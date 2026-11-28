@@ -185,7 +185,7 @@ router.post('/book', (req, res) => {
   res.status(202).json({ success: true, message: 'Bulk booking started' });
 });
 
-// POST /api/bulk/cancel — Unified with cancelOrderBookingCore (Final status lock, courier_status clear, Pending parity, Ready to Book tag removal, FIFO restore)
+// POST /api/bulk/cancel — Unified with cancelOrderBookingCore (Final status lock, courier_status clear, keeps Confirmed + Ready to Book tag, FIFO restore)
 router.post('/cancel', async (req, res) => {
   const { ids } = req.body;
   if (!ids || !ids.length) return res.status(400).json({ error: 'ids required' });

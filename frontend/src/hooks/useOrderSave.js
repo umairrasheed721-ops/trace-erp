@@ -343,10 +343,10 @@ export default function useOrderSave({
     }
   }, [apiBase, editingOrder, getAuthHeaders, setEditingOrder, onLocalOrderUpdate, notify]);
 
-  // Cancel Courier Booking (PostEx / Instaworld + clears tracking + restores FIFO + removes Ready to Book tag)
+  // Cancel Courier Booking (PostEx / Instaworld + clears tracking + restores FIFO + keeps Confirmed & Ready to Book tag)
   const handleCancelBooking = useCallback(async () => {
     if (!editingOrder?.id) return;
-    if (!window.confirm(`Cancel courier booking (${editingOrder.tracking_number}) for Order #${editingOrder.ref_number || editingOrder.id}?\n\nThis will void the tracking on courier, cancel Shopify fulfillment, and move the order back to Pending.`)) {
+    if (!window.confirm(`Cancel courier booking (${editingOrder.tracking_number}) for Order #${editingOrder.ref_number || editingOrder.id}?\n\nThis will void the tracking on courier, cancel Shopify fulfillment, and keep the order Confirmed ("Ready to Book") for re-booking.`)) {
       return;
     }
     setActionBusy(true);
@@ -361,18 +361,18 @@ export default function useOrderSave({
       const merged = {
         ...editingOrder,
         ...(data.order || {}),
-        delivery_status: 'Pending',
+        delivery_status: 'Confirmed',
         tracking_number: null,
         courier: null,
         courier_status: null,
-        confirmed_at: null,
+        tags: data.tags !== undefined ? data.tags : editingOrder.tags,
         shop_domain: editingOrder.shop_domain
       };
       setEditingOrder(merged);
       setLiveHistory([]);
       setTrackingData(null);
       if (onLocalOrderUpdate) onLocalOrderUpdate(merged);
-      notify('🛑 Courier booking cancelled — Order moved back to Pending', 'success');
+      notify('🛑 Courier booking cancelled — Order kept Confirmed (Ready to Book)', 'success');
     } catch (err) {
       notify(`❌ ${err.message}`, 'error');
     } finally {

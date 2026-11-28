@@ -704,7 +704,7 @@ export default function SearchTool() {
       variant: 'danger',
       confirmText: 'Confirm Cancel Booking',
       title: `Cancel Booking — ${order?.ref_number || `#${orderId}`}`,
-      message: 'This will cancel the parcel in the courier portal, unfulfill on Shopify, remove "Ready to Book" tag, and restore inventory.',
+      message: 'This will cancel the parcel in the courier portal, unfulfill on Shopify, restore inventory, and keep the order Confirmed ("Ready to Book") for re-booking.',
       details: order ? [
         { label: 'Customer', value: order.customer_name || '—' },
         { label: 'Courier & CN', value: `${order.courier || '—'} · ${order.tracking_number || '—'}` },
@@ -713,16 +713,24 @@ export default function SearchTool() {
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, isOpen: false }))
         const previousOrders = [...allOrders];
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: null, courier: null, courier_status: null, delivery_status: 'Pending' } : o))
+        setAllOrders(prev => prev.map(o => {
+          if (o.id !== orderId) return o;
+          const tagList = String(o.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+          if (!tagList.some(t => t.toLowerCase() === 'ready to book')) tagList.push('Ready to Book');
+          return { ...o, tracking_number: null, courier: null, courier_status: null, delivery_status: 'Confirmed', tags: tagList.join(', ') };
+        }))
         setBookingId(orderId)
         try {
           const apiUrl = import.meta.env.VITE_API_URL || '';
           const res = await fetch(`${apiUrl}/api/orders/${orderId}/cancel-booking`, { method: 'POST' })
           const data = await res.json()
           if (data.success) {
-            const parts = ['✅ Booking Cancelled → Pending'];
+            if (data.tags !== undefined) {
+              setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Confirmed', tags: data.tags } : o));
+            }
+            const parts = ['✅ Booking Cancelled — Kept Confirmed (Ready to Book)'];
             if (data.shopifyFulfillmentCancelled) parts.push('Shopify Unfulfilled');
-            if (data.shopifyTagRemoved) parts.push('Tag Removed');
+            if (data.shopifyTagSynced) parts.push('Ready to Book Kept');
             if (data.fifoRestored) parts.push('Stock Restored');
             addToast(parts.join(' · '), 'info')
             fetchBacklogDates();

@@ -678,7 +678,8 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned' || mappedStatus === 'Delivered') {
           newDeliveryStatus = mappedStatus;
         } else if (shopifyFulfillmentCancelled) {
-          newDeliveryStatus = 'Pending';
+          const hasReady = String(fresh.tags || '').toLowerCase().includes('ready to book');
+          newDeliveryStatus = hasReady ? 'Confirmed' : 'Pending';
         } else if (fresh.fulfillment_status === 'fulfilled' || tracking) {
           // Fulfilled/tracked orders must leave Pending AND Confirmed (Shopify-side booking)
           if (!newDeliveryStatus || ['pending', 'confirmed'].includes(newDeliveryStatus.toLowerCase())) {
@@ -904,7 +905,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned' || mappedStatus === 'Delivered') {
       newDeliveryStatus = mappedStatus;
     } else if (shopifyFulfillmentCancelled) {
-      newDeliveryStatus = 'Pending';
+      const hasReady = String(order.tags || '').toLowerCase().includes('ready to book');
+      newDeliveryStatus = hasReady ? 'Confirmed' : 'Pending';
     } else if ((order.fulfillment_status === 'fulfilled' || tracking) && ['pending', 'confirmed', ''].includes((newDeliveryStatus || '').toLowerCase())) {
       newDeliveryStatus = 'Booked';
     }

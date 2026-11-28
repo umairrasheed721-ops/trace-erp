@@ -190,6 +190,10 @@ function mergeOrderTagString(existingTags, tagName = READY_TO_BOOK_TAG, mode = '
     .map(t => t.trim())
     .filter(Boolean);
 
+  if (mode === 'add' && targetLower && list.some(t => t.toLowerCase() === targetLower)) {
+    return { tags: list.join(', '), changed: false };
+  }
+
   const filtered = list.filter(t => t.toLowerCase() !== targetLower);
   if (mode === 'add' && targetLower) {
     filtered.push(tagName);
