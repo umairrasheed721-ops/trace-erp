@@ -58,10 +58,12 @@ export default function useOrderItems({ editingOrder, apiBase }) {
 
       color = color.charAt(0).toUpperCase() + color.slice(1);
 
+      const resolvedImage = mp.variant_image_url || mp.image_url || '';
+
       if (!groups[pTitle]) {
         groups[pTitle] = {
           parent_title: pTitle,
-          image_url: mp.image_url,
+          image_url: resolvedImage,
           colors: {},
           all_skus: [],
           all_variants: [],
@@ -72,18 +74,23 @@ export default function useOrderItems({ editingOrder, apiBase }) {
       if (!groups[pTitle].colors[color]) {
         groups[pTitle].colors[color] = {
           color_name: color,
+          image_url: resolvedImage,
           sizes: []
         };
       }
 
       if (mp.sku) groups[pTitle].all_skus.push(mp.sku.toLowerCase());
       if (vTitle) groups[pTitle].all_variants.push(vTitle.toLowerCase());
-      if (mp.image_url && !groups[pTitle].image_url) {
-        groups[pTitle].image_url = mp.image_url;
+      if (resolvedImage && !groups[pTitle].image_url) {
+        groups[pTitle].image_url = resolvedImage;
+      }
+      if (resolvedImage && !groups[pTitle].colors[color].image_url) {
+        groups[pTitle].colors[color].image_url = resolvedImage;
       }
 
       groups[pTitle].colors[color].sizes.push({
         ...mp,
+        image_url: resolvedImage,
         clean_size: size,
         clean_color: color
       });

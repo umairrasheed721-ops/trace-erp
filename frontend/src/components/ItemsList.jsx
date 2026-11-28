@@ -16,6 +16,7 @@ function ParentProductCard({ g, localItems, setLocalItems, setShowProductSearch,
 
   const activeColorData = g.colors[activeColor] || g.colors[colorKeys[0]];
   if (!activeColorData) return null;
+  const cardImg = activeColorData.image_url || g.image_url || '';
 
   return (
     <div className="eom-card" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -25,7 +26,7 @@ function ParentProductCard({ g, localItems, setLocalItems, setShowProductSearch,
           background: 'var(--bg-elevated)', border: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0
         }}>
-          {g.image_url ? <img src={g.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '1.1rem' }}>🏷️</span>}
+          {cardImg ? <img src={cardImg} alt={g.parent_title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '1.1rem' }}>🏷️</span>}
         </div>
         <div style={{ minWidth: 0 }}>
           <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -249,8 +250,8 @@ const ItemsList = React.memo(({
                   background: 'var(--bg-elevated)', border: '1px solid var(--border)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0
                 }}>
-                  {item.image_url ? (
-                    <img src={item.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {(item.image_url || matched?.variant_image_url || matched?.image_url) ? (
+                    <img src={item.image_url || matched?.variant_image_url || matched?.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
                     <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-muted)' }}>
                       {(item.sku || item.title || 'SKU').slice(0, 3).toUpperCase()}

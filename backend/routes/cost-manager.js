@@ -9,7 +9,8 @@ router.get('/', (req, res) => {
 
   try {
     const rows = db.prepare(`
-      SELECT * FROM product_master_costs 
+      SELECT *, COALESCE(NULLIF(variant_image_url, ''), '') AS image_url
+      FROM product_master_costs 
       WHERE store_id = ? 
       ORDER BY updated_at DESC
     `).all(store_id);

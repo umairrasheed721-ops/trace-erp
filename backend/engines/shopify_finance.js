@@ -525,6 +525,9 @@ async function getShopifyInventoryCosts(store, onBatch) {
               product {
                 title
                 status
+                featuredImage {
+                  url
+                }
               }
               inventoryItem {
                 unitCost {
@@ -595,6 +598,7 @@ async function getShopifyInventoryCosts(store, onBatch) {
       });
       if (!sawOnHand) onHandQty = qty + committedQty;
       
+      const resolvedImgUrl = node.image?.url || node.product?.featuredImage?.url || '';
       const key = variantId || `${parentName}@@@${variantName}`;
       if (!pageMap[key]) {
         pageMap[key] = { 
@@ -608,7 +612,7 @@ async function getShopifyInventoryCosts(store, onBatch) {
           committed_qty: committedQty,
           on_hand_qty: onHandQty,
           incoming_qty: incomingQty,
-          image_url: node.image?.url || '',
+          image_url: resolvedImgUrl,
           status: status,
           inventory_policy: node.inventoryPolicy ? String(node.inventoryPolicy).toLowerCase() : 'deny'
         };
@@ -617,8 +621,8 @@ async function getShopifyInventoryCosts(store, onBatch) {
         pageMap[key].committed_qty += committedQty;
         pageMap[key].on_hand_qty += onHandQty;
         pageMap[key].incoming_qty += incomingQty;
-        if (!pageMap[key].image_url && node.image?.url) {
-          pageMap[key].image_url = node.image.url;
+        if (!pageMap[key].image_url && resolvedImgUrl) {
+          pageMap[key].image_url = resolvedImgUrl;
         }
       }
     });
@@ -653,6 +657,9 @@ async function getShopifySingleProductCosts(store, productId) {
           id
           title
           status
+          featuredImage {
+            url
+          }
           variants(first: 100) {
             edges {
               node {
@@ -752,7 +759,7 @@ async function getShopifySingleProductCosts(store, productId) {
         committed_qty: committedQty,
         on_hand_qty: onHandQty,
         incoming_qty: incomingQty,
-        image_url: node.image?.url || '',
+        image_url: node.image?.url || prod.featuredImage?.url || '',
         status: status,
         inventory_policy: node.inventoryPolicy ? String(node.inventoryPolicy).toLowerCase() : 'deny'
       });
