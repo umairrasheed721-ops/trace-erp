@@ -650,6 +650,27 @@ module.exports = function schedulerInit() {
       }
     });
   }, { timezone: 'UTC' });
+
+  // 20. Every day at 4:00 AM PKT (11:00 PM UTC): Automated online SQLite DB backup snapshot (keeps latest 3)
+  cron.schedule('0 23 * * *', async () => {
+    console.log('🛡️ [CRON] Daily SQLite Database Backup starting...');
+    await runMultiTenant('daily_db_backup', async (tenantId) => {
+      try {
+        const { createSafeBackup } = require('./services/dbBackupService');
+        const snap = createSafeBackup(tenantId, 'daily_cron');
+        recordSyncEvent({
+          type: 'Daily DB Backup',
+          category: 'system',
+          total: 1,
+          success: 1,
+          failed: 0,
+          summary: `Snapshot ${snap.filename} (${snap.sizeMB} MB)`,
+        });
+      } catch (e) {
+        console.error(`[Daily DB Backup Error] (Tenant: ${tenantId}):`, e.message);
+      }
+    });
+  }, { timezone: 'UTC' });
 };
 
 module.exports.sendReviewEmails = sendReviewEmails;

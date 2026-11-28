@@ -16,6 +16,8 @@ export default function BulkActions({
   handleBulkBookPostEx,
   handleBulkBookInstaworld,
   handleBulkCancel,
+  handleOpenPickList,
+  handleBulkRetryFulfillment,
   totalMatching,
   handleSelectAllMatching
 }) {
@@ -318,6 +320,44 @@ export default function BulkActions({
           onMouseOut={(e) => { e.target.style.background = '#1f2937' }}
         >
           🚚 SYNC COURIER
+        </button>
+      )}
+
+      {typeof handleOpenPickList === 'function' && (
+        <button
+          disabled={bulkActionLoading}
+          onClick={handleOpenPickList}
+          title="Generate SKU-wise Warehouse Pick-List for selected orders"
+          style={{
+            ...styles.btnSecondary,
+            color: '#c4b5fd',
+            border: '1px solid rgba(139, 92, 246, 0.35)',
+            background: 'rgba(139, 92, 246, 0.12)',
+          }}
+          onMouseOver={(e) => { e.target.style.background = 'rgba(139, 92, 246, 0.22)' }}
+          onMouseOut={(e) => { e.target.style.background = 'rgba(139, 92, 246, 0.12)' }}
+        >
+          📋 PICK-LIST ({selectedIds.length})
+        </button>
+      )}
+
+      {typeof handleBulkRetryFulfillment === 'function' && (
+        <button
+          disabled={bulkActionLoading || !canCancel}
+          onClick={handleBulkRetryFulfillment}
+          title={canCancel ? `Retry pushing tracking to Shopify Fulfillment for ${trackedCount} tracked order(s)` : 'Select tracked orders to retry Shopify fulfillment'}
+          style={{
+            ...styles.btnSecondary,
+            color: '#38bdf8',
+            border: '1px solid rgba(56, 189, 248, 0.32)',
+            background: 'rgba(56, 189, 248, 0.1)',
+            opacity: (!canCancel || bulkActionLoading) ? 0.45 : 1,
+            cursor: (!canCancel || bulkActionLoading) ? 'not-allowed' : 'pointer',
+          }}
+          onMouseOver={(e) => { if (canCancel) e.target.style.background = 'rgba(56, 189, 248, 0.2)' }}
+          onMouseOut={(e) => { e.target.style.background = 'rgba(56, 189, 248, 0.1)' }}
+        >
+          🔁 RETRY FULFILL
         </button>
       )}
 

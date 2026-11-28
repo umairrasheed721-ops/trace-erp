@@ -124,7 +124,7 @@ export const CityCell = React.memo(function CityCell({ order, onSave, onInteract
   )
 })
 
-export const PaidAmountCell = React.memo(function PaidAmountCell({ order, onSave, onInteraction }) {
+export const PaidAmountCell = React.memo(function PaidAmountCell({ order, onSave, onInteraction, onOpenVerifyAdvance }) {
   const [val, setVal] = useState(order.paid_amount || 0)
   const [isEditing, setIsEditing] = useState(false)
 
@@ -182,11 +182,41 @@ export const PaidAmountCell = React.memo(function PaidAmountCell({ order, onSave
     <div onClick={() => { setIsEditing(true); if (onInteraction) onInteraction(); }} style={{ cursor: 'pointer', fontWeight: 600 }}>
       <div>Rs {Math.round(paidAmt).toLocaleString()}</div>
       {showCustomCodHint && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+          <div
+            style={{ fontSize: '0.63rem', color: '#b45309', fontWeight: 700, lineHeight: 1.2 }}
+            title={`Booked COD Rs ${Math.round(bookedCod).toLocaleString()} vs Order Price Rs ${Math.round(orderPrice).toLocaleString()}. Cross-verify Rs ${Math.abs(advDiff).toLocaleString()} advance in bank, then verify below.`}
+          >
+            💵 COD Rs {Math.round(bookedCod).toLocaleString()}{advDiff > 0 ? ` · Adv ${advDiff.toLocaleString()}` : ''}
+          </div>
+          {typeof onOpenVerifyAdvance === 'function' && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenVerifyAdvance(order); }}
+              style={{
+                alignSelf: 'flex-start',
+                padding: '1px 6px',
+                borderRadius: 5,
+                border: '1px solid rgba(16,185,129,0.45)',
+                background: 'rgba(16,185,129,0.14)',
+                color: '#059669',
+                fontSize: '0.61rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+              title="Verify bank advance receipt & mark full paid"
+            >
+              ✅ Verify Adv
+            </button>
+          )}
+        </div>
+      )}
+      {!showCustomCodHint && order.advance_verified_at && (
         <div
-          style={{ fontSize: '0.63rem', color: '#b45309', fontWeight: 700, marginTop: '2px', lineHeight: 1.2 }}
-          title={`Booked COD Rs ${Math.round(bookedCod).toLocaleString()} vs Order Price Rs ${Math.round(orderPrice).toLocaleString()}. Cross-verify Rs ${Math.abs(advDiff).toLocaleString()} advance in bank, then click to mark full paid.`}
+          style={{ fontSize: '0.61rem', color: '#059669', fontWeight: 700, marginTop: 2 }}
+          title={`Advance verified by ${order.advance_verified_by || 'Admin'} (${order.advance_bank_ref || 'Bank'})`}
         >
-          💵 COD Rs {Math.round(bookedCod).toLocaleString()}{advDiff > 0 ? ` · Adv ${advDiff.toLocaleString()}` : ''}
+          ✓ Adv Verified
         </div>
       )}
       {surplusAmt > 0.9 && (

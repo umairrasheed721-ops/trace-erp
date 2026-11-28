@@ -19,7 +19,7 @@ const CommandTableRow = React.memo(({
   handleCancelBooking, handleBookInstaworld, formatCustomerName, waTemplates, allOrdersCount, orderCountsMap,
   setCustomerHistoryPhone, updateOrderField, canSeeFinancials, activeTooltipOrderId, setActiveTooltipOrderId,
   fetchBreakdown, user, statusUpdatingId, handleManualStatusChange, ERP_STATUSES, getStatusColor,
-  activeShopDomain, setTooltipTriggerEl, onForceResync, activeRowId, setActiveRowId
+  activeShopDomain, setTooltipTriggerEl, onForceResync, activeRowId, setActiveRowId, onOpenVerifyAdvance
 }) => {
   const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0);
   const navigate = useNavigate();
@@ -791,7 +791,7 @@ const CommandTableRow = React.memo(({
           );
         }
         if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
-        if (col.id === 'paid_amount') return <td key={col.id}><PaidAmountCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} /></td>
+        if (col.id === 'paid_amount') return <td key={col.id}><PaidAmountCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} onOpenVerifyAdvance={onOpenVerifyAdvance} /></td>
         if (col.id === 'diff') return (
           <td key={col.id} style={{ color: diff > 1 && s.includes('delivered') ? 'var(--red)' : 'var(--text-muted)', fontWeight: diff > 1 && s.includes('delivered') ? 700 : 400 }}>
             {!isClear ? `Rs ${Math.round(diff).toLocaleString()}` : <span style={{color:'var(--green)'}}>✅ Clear</span>}

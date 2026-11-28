@@ -1592,6 +1592,26 @@ module.exports = [
     } catch (e) {
       console.error('Migration #58 failed:', e.message);
     }
+  },
+
+  // 59. Add Advance Payment Cross-Verification audit columns to orders table
+  (db) => {
+    try {
+      const orderCols = db.prepare('PRAGMA table_info(orders)').all().map(c => c.name);
+      const addCols = [
+        ['advance_verified_at', 'TEXT DEFAULT NULL'],
+        ['advance_bank_ref', "TEXT DEFAULT ''"],
+        ['advance_verified_by', "TEXT DEFAULT ''"],
+      ];
+      for (const [col, def] of addCols) {
+        if (!orderCols.includes(col)) {
+          db.exec(`ALTER TABLE orders ADD COLUMN ${col} ${def}`);
+        }
+      }
+      console.log('✅ [Migration #59] Advance verification audit columns verified.');
+    } catch (e) {
+      console.error('Migration #59 failed:', e.message);
+    }
   }
 ];
 

@@ -352,7 +352,8 @@ export default function CommandTable({
   clearAllFilters,
   onForceResync,
   activeRowId,
-  setActiveRowId
+  setActiveRowId,
+  onOpenVerifyAdvance
 }) {
   const { user, activeStoreId, addToast } = useApp()
   const canSeeFinancials = user?.role === 'admin'
@@ -563,6 +564,7 @@ export default function CommandTable({
                   onForceResync={onForceResync}
                   activeRowId={activeRowId}
                   setActiveRowId={setActiveRowId}
+                  onOpenVerifyAdvance={onOpenVerifyAdvance}
                 />
               )
             })}

@@ -384,6 +384,394 @@ router.get('/ready-tag/preview', async (req, res) => {
   }
 });
 
+// POST /api/orders/pick-list - Consolidated SKU-Wise Warehouse Pick-List for selected orders
+router.post('/pick-list', (req, res) => {
+  try {
+    const rawIds = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const ids = [...new Set(rawIds.map(x => Number(x)).filter(n => Number.isFinite(n) && n > 0))].slice(0, 500);
+    if (ids.length === 0) return res.status(400).json({ error: 'ids array required' });
+
+    const placeholders = ids.map(() => '?').join(',');
+    const orders = db.prepare(`
+      SELECT o.id, o.store_id, o.ref_number, o.shopify_order_id, o.customer_name,
+             o.delivery_status, o.product_titles, o.line_items, o.items_count,
+             s.store_name, s.shop_domain
+      FROM orders o
+      LEFT JOIN stores s ON o.store_id = s.id
+      WHERE o.id IN (${placeholders})
+      ORDER BY o.id DESC
+    `).all(...ids);
+
+    if (orders.length === 0) return res.status(404).json({ error: 'No matching orders found' });
+
+    const storeIds = [...new Set(orders.map(o => o.store_id).filter(Boolean))];
+    const byVariant = new Map();
+    const bySku = new Map();
+    const byTitleVar = new Map();
+
+    if (storeIds.length > 0) {
+      const sPh = storeIds.map(() => '?').join(',');
+      const pmcRows = db.prepare(`
+        SELECT store_id, shopify_variant_id, sku, parent_title, variant_title, image_url,
+               COALESCE(inventory_qty, 0) AS available_qty,
+               COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) AS on_hand_qty
+        FROM product_master_costs
+        WHERE store_id IN (${sPh})
+      `).all(...storeIds);
+
+      for (const r of pmcRows) {
+        const rawVid = String(r.shopify_variant_id || '').trim();
+        const numVid = rawVid.includes('/') ? rawVid.split('/').pop() : rawVid;
+        if (numVid) byVariant.set(`${r.store_id}:${numVid}`, r);
+        const normSku = String(r.sku || '').trim().toLowerCase();
+        if (normSku) bySku.set(`${r.store_id}:${normSku}`, r);
+        const pKey = String(r.parent_title || '').trim().toLowerCase();
+        const vKey = String(r.variant_title || '').trim().toLowerCase();
+        if (pKey) byTitleVar.set(`${r.store_id}:${pKey}|||${vKey}`, r);
+      }
+    }
+
+    const bucketMap = new Map();
+    let totalUnits = 0;
+
+    const addItem = (ord, { title, variantTitle, sku, variantId, qty, imageUrl }) => {
+      const cleanQty = Math.max(0, Number(qty) || 0);
+      if (cleanQty <= 0) return;
+
+      const cleanTitle = String(title || 'Item').trim();
+      const rawVar = String(variantTitle || '').trim();
+      const cleanVar = rawVar === 'Default Title' ? '' : rawVar;
+      const numVid = String(variantId || '').includes('/') ? String(variantId).split('/').pop() : String(variantId || '').trim();
+      const cleanSku = String(sku || '').trim();
+
+      const pmc = (numVid && byVariant.get(`${ord.store_id}:${numVid}`))
+        || (cleanSku && bySku.get(`${ord.store_id}:${cleanSku.toLowerCase()}`))
+        || byTitleVar.get(`${ord.store_id}:${cleanTitle.toLowerCase()}|||${cleanVar.toLowerCase()}`)
+        || null;
+
+      const finalSku = cleanSku || pmc?.sku || '';
+      const finalTitle = pmc?.parent_title || cleanTitle;
+      const finalVar = cleanVar || (pmc?.variant_title && pmc.variant_title !== 'Default Title' ? pmc.variant_title : '');
+      const key = finalSku
+        ? `sku:${finalSku.toLowerCase()}`
+        : (numVid ? `vid:${numVid}` : `name:${finalTitle.toLowerCase()}|||${finalVar.toLowerCase()}`);
+
+      let entry = bucketMap.get(key);
+      if (!entry) {
+        entry = {
+          key,
+          title: finalTitle,
+          variant_title: finalVar || 'Default',
+          sku: finalSku,
+          image_url: imageUrl || pmc?.image_url || null,
+          available_qty: pmc ? Number(pmc.available_qty) : null,
+          on_hand_qty: pmc ? Number(pmc.on_hand_qty) : null,
+          total_qty: 0,
+          order_refs: [],
+          _refSet: new Set(),
+        };
+        bucketMap.set(key, entry);
+      }
+      if (!entry.image_url && (imageUrl || pmc?.image_url)) entry.image_url = imageUrl || pmc?.image_url;
+      entry.total_qty += cleanQty;
+      totalUnits += cleanQty;
+      const refLabel = ord.ref_number || `#${ord.id}`;
+      if (!entry._refSet.has(refLabel)) {
+        entry._refSet.add(refLabel);
+        entry.order_refs.push({ ref: refLabel, qty: cleanQty, id: ord.id });
+      } else {
+        const existingRef = entry.order_refs.find(r => r.ref === refLabel);
+        if (existingRef) existingRef.qty += cleanQty;
+      }
+    };
+
+    for (const ord of orders) {
+      let parsedItems = [];
+      try {
+        if (ord.line_items) {
+          const arr = JSON.parse(ord.line_items);
+          if (Array.isArray(arr)) parsedItems = arr;
+        }
+      } catch (_) {}
+
+      if (parsedItems.length > 0) {
+        for (const li of parsedItems) {
+          if (!li) continue;
+          const qty = li.current_quantity !== undefined && li.current_quantity !== null
+            ? Number(li.current_quantity)
+            : Number(li.quantity || 0);
+          if (qty <= 0) continue;
+          addItem(ord, {
+            title: li.title || li.name || 'Item',
+            variantTitle: li.variant_title || '',
+            sku: li.sku || '',
+            variantId: li.variant_id || li.shopify_variant_id || '',
+            qty,
+            imageUrl: li.image_url || null,
+          });
+        }
+      } else if (ord.product_titles) {
+        const parts = String(ord.product_titles).split(/,\s*(?=[^)]*(?:\(|$))/).filter(Boolean);
+        for (const part of parts) {
+          const m = part.match(/^(.*?)(?:\s*\(x(\d+)\))?$/i);
+          const rawName = (m?.[1] || part).trim();
+          const qty = m?.[2] ? parseInt(m[2], 10) : 1;
+          const dashIdx = rawName.lastIndexOf(' - ');
+          const title = dashIdx > 0 ? rawName.slice(0, dashIdx).trim() : rawName;
+          const variantTitle = dashIdx > 0 ? rawName.slice(dashIdx + 3).trim() : '';
+          addItem(ord, { title, variantTitle, sku: '', variantId: '', qty, imageUrl: null });
+        }
+      }
+    }
+
+    const items = Array.from(bucketMap.values())
+      .map(({ _refSet, ...rest }) => ({
+        ...rest,
+        order_count: rest.order_refs.length,
+        stock_shortfall: rest.available_qty !== null ? Math.max(0, rest.total_qty - rest.available_qty) : 0,
+      }))
+      .sort((a, b) => (b.total_qty - a.total_qty) || a.title.localeCompare(b.title));
+
+    res.json({
+      success: true,
+      summary: {
+        totalOrders: orders.length,
+        totalUnits,
+        uniqueSkus: items.length,
+        storeName: orders[0]?.store_name || orders[0]?.shop_domain || 'TRACE Store',
+        generatedAt: new Date().toISOString(),
+      },
+      items,
+      orders: orders.map(o => ({ id: o.id, ref_number: o.ref_number || `#${o.id}`, customer_name: o.customer_name, delivery_status: o.delivery_status })),
+    });
+  } catch (err) {
+    console.error('[PickList] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/orders/bulk-retry-fulfillment - Retry pushing tracking to Shopify for tracked orders still Unfulfilled
+router.post('/bulk-retry-fulfillment', async (req, res) => {
+  const { fulfillShopifyOrder } = require('../../engines/shopify');
+  try {
+    const rawIds = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const storeId = req.body?.store_id ? Number(req.body.store_id) : null;
+    const ids = [...new Set(rawIds.map(x => Number(x)).filter(n => Number.isFinite(n) && n > 0))].slice(0, 100);
+
+    let targets = [];
+    if (ids.length > 0) {
+      const ph = ids.map(() => '?').join(',');
+      targets = db.prepare(`
+        SELECT o.*, s.shop_domain, s.access_token
+        FROM orders o JOIN stores s ON o.store_id = s.id
+        WHERE o.id IN (${ph})
+      `).all(...ids);
+    } else if (storeId) {
+      targets = db.prepare(`
+        SELECT o.*, s.shop_domain, s.access_token
+        FROM orders o JOIN stores s ON o.store_id = s.id
+        WHERE o.store_id = ?
+          AND o.tracking_number IS NOT NULL AND TRIM(o.tracking_number) NOT IN ('', '—')
+          AND LOWER(COALESCE(o.delivery_status, '')) != 'cancelled'
+          AND LOWER(COALESCE(o.fulfillment_status, 'unfulfilled')) IN ('', 'unfulfilled', 'partial')
+        ORDER BY o.id DESC
+        LIMIT 50
+      `).all(storeId);
+    } else {
+      return res.status(400).json({ error: 'ids or store_id required' });
+    }
+
+    let fulfilled = 0;
+    let alreadyFulfilled = 0;
+    let skipped = 0;
+    let failed = 0;
+    const details = [];
+
+    for (const order of targets) {
+      const ref = order.ref_number || `#${order.id}`;
+      const track = String(order.tracking_number || '').trim();
+      if (!track || track === '—') {
+        skipped++;
+        details.push({ id: order.id, ref_number: ref, status: 'skipped', message: 'No tracking number assigned' });
+        continue;
+      }
+      if (!order.shopify_order_id || !order.shop_domain || !order.access_token) {
+        skipped++;
+        details.push({ id: order.id, ref_number: ref, status: 'skipped', message: 'Missing Shopify order ID or store token' });
+        continue;
+      }
+
+      try {
+        await fulfillShopifyOrder(order, order.shopify_order_id, track, order.courier || 'PostEx');
+        db.prepare("UPDATE orders SET fulfillment_status = 'fulfilled' WHERE id = ?").run(order.id);
+        try { require('../../services/readyTagSync').clearReadyTagAfterBooking(order.id); } catch (_) {}
+        broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+        fulfilled++;
+        details.push({ id: order.id, ref_number: ref, tracking_number: track, status: 'fulfilled', message: 'Fulfilled on Shopify' });
+      } catch (err) {
+        const msg = String(err?.message || 'Shopify fulfillment error');
+        if (/already\s+fulfilled|no\s+fulfillable|no\s+open\s+fulfillment/i.test(msg)) {
+          db.prepare("UPDATE orders SET fulfillment_status = 'fulfilled' WHERE id = ?").run(order.id);
+          try { require('../../services/readyTagSync').clearReadyTagAfterBooking(order.id); } catch (_) {}
+          broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+          alreadyFulfilled++;
+          details.push({ id: order.id, ref_number: ref, tracking_number: track, status: 'already_fulfilled', message: 'Already fulfilled on Shopify (ERP synced)' });
+        } else {
+          failed++;
+          details.push({ id: order.id, ref_number: ref, tracking_number: track, status: 'failed', message: msg });
+        }
+      }
+      await new Promise(r => setTimeout(r, 220));
+    }
+
+    res.json({ success: true, total: targets.length, fulfilled, alreadyFulfilled, skipped, failed, details });
+  } catch (err) {
+    console.error('[BulkRetryFulfillment] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/orders/booking-risk-check - Fast batched pre-dispatch Risk Shield (Blacklist + High RTO + 48h Duplicates)
+router.post('/booking-risk-check', (req, res) => {
+  try {
+    const rawIds = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const ids = [...new Set(rawIds.map(x => Number(x)).filter(n => Number.isFinite(n) && n > 0))].slice(0, 300);
+    if (ids.length === 0) return res.json({ success: true, risks: {}, highRiskCount: 0 });
+
+    const norm10 = (p) => {
+      const d = String(p || '').replace(/\D/g, '');
+      return d.length >= 10 ? d.slice(-10) : '';
+    };
+
+    const ph = ids.map(() => '?').join(',');
+    const targetOrders = db.prepare(`
+      SELECT id, store_id, ref_number, phone, customer_name, order_date, created_timestamp
+      FROM orders
+      WHERE id IN (${ph})
+    `).all(...ids);
+
+    // 1. Load Blacklist normalized phones in 1 lightweight query
+    const blacklistMap = new Map();
+    try {
+      const blRows = db.prepare('SELECT phone, reason FROM blacklist').all();
+      for (const b of blRows) {
+        const p10 = norm10(b.phone);
+        if (p10) blacklistMap.set(p10, b.reason || 'Blacklisted phone');
+      }
+    } catch (_) {}
+
+    // 2. Batch-query customer history & 48h siblings using indexed normalized last-10 phone
+    const phoneSet = new Set();
+    for (const o of targetOrders) {
+      const p10 = norm10(o.phone);
+      if (p10) phoneSet.add(p10);
+    }
+
+    const historyByPhone = new Map();
+    if (phoneSet.size > 0) {
+      const phoneList = Array.from(phoneSet);
+      const pPh = phoneList.map(() => '?').join(',');
+      const histRows = db.prepare(`
+        SELECT id, store_id, ref_number, delivery_status, order_date, created_timestamp,
+               SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), '(', ''), -10) AS p10
+        FROM orders
+        WHERE phone IS NOT NULL AND phone != ''
+          AND SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), '(', ''), -10) IN (${pPh})
+      `).all(...phoneList);
+
+      for (const h of histRows) {
+        if (!h.p10) continue;
+        if (!historyByPhone.has(h.p10)) historyByPhone.set(h.p10, []);
+        historyByPhone.get(h.p10).push(h);
+      }
+    }
+
+    const parseOrderTs = (ord) => {
+      const raw = ord.created_timestamp || ord.order_date || '';
+      if (!raw) return null;
+      const t = Date.parse(raw.includes('T') ? raw : raw.replace(' ', 'T') + (raw.length === 10 ? 'T12:00:00Z' : 'Z'));
+      return Number.isFinite(t) ? t : null;
+    };
+
+    const risks = {};
+    let highRiskCount = 0;
+
+    for (const ord of targetOrders) {
+      const p10 = norm10(ord.phone);
+      const flags = [];
+      let level = 'clean';
+      let autoUncheck = false;
+      const duplicateRefs = [];
+      let delivered = 0;
+      let returned = 0;
+      let totalHistory = 0;
+
+      if (p10 && blacklistMap.has(p10)) {
+        level = 'critical';
+        autoUncheck = true;
+        flags.push({ type: 'blacklist', label: `🚫 Blacklisted (${blacklistMap.get(p10)})` });
+      }
+
+      const siblings = (p10 && historyByPhone.get(p10)) ? historyByPhone.get(p10) : [];
+      const ordTs = parseOrderTs(ord);
+
+      for (const h of siblings) {
+        if (h.id === ord.id) continue;
+        const st = String(h.delivery_status || '').trim().toLowerCase();
+        totalHistory++;
+        if (st === 'delivered') delivered++;
+        else if (st === 'returned' || st === 'return received' || st === 'rto') returned++;
+
+        // Same-store non-cancelled order within ±48 hours = Duplicate Risk
+        if (h.store_id === ord.store_id && st !== 'cancelled') {
+          const hTs = parseOrderTs(h);
+          if (ordTs && hTs && Math.abs(ordTs - hTs) <= 48 * 3600 * 1000) {
+            duplicateRefs.push(h.ref_number || `#${h.id}`);
+          }
+        }
+      }
+
+      if (duplicateRefs.length > 0) {
+        if (level !== 'critical') level = 'high';
+        autoUncheck = true;
+        flags.push({
+          type: 'duplicate',
+          label: `👯 Duplicate 48h (${duplicateRefs.slice(0, 2).join(', ')})`,
+        });
+      }
+
+      if (returned >= 2 || (returned >= 1 && delivered === 0)) {
+        if (level !== 'critical') level = 'high';
+        autoUncheck = true;
+        flags.push({
+          type: 'rto',
+          label: `⚠️ High RTO (${returned} Return${returned > 1 ? 's' : ''} / ${delivered} Del)`,
+        });
+      } else if (returned >= 1) {
+        if (level === 'clean') level = 'warn';
+        flags.push({
+          type: 'rto_warn',
+          label: `⚡ ${returned} Return / ${delivered} Del`,
+        });
+      }
+
+      if (autoUncheck) highRiskCount++;
+      risks[String(ord.id)] = {
+        level,
+        autoUncheck,
+        flags,
+        history: { total: totalHistory, delivered, returned },
+        duplicateRefs,
+      };
+    }
+
+    res.json({ success: true, risks, highRiskCount });
+  } catch (err) {
+    console.error('[BookingRiskCheck] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/orders/ready-tag/cleanup - Admin background cleanup removing stale "Ready to Book" tags on Shopify + ERP
 router.post('/ready-tag/cleanup', async (req, res) => {
   if (req.user?.role !== 'admin') {

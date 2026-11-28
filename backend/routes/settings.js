@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
+const { db, DB_PATH, DB_DIR } = require('../db');
+const { createSafeBackup, getBackupStatus, resolveBackupDownloadPath } = require('../services/dbBackupService');
 let botModule = { getBot: () => null, sessions: new Map() };
 try { botModule = require('../engines/whatsapp_bot'); } catch (_) {}
 
@@ -132,6 +134,69 @@ router.post('/whatsapp-logout', async (req, res) => {
   } catch (error) {
     console.error('[SETTINGS_LOGOUT_ERROR]:', error);
     return res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/settings/db-backup/status - Admin SQLite DB backup health & snapshot list
+router.get('/db-backup/status', (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  try {
+    const tenantId = req.tenantId || 'default';
+    res.json({ success: true, ...getBackupStatus(tenantId) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/settings/db-backup/create - Trigger immediate consistent online SQLite snapshot
+router.post('/db-backup/create', (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  try {
+    const tenantId = req.tenantId || 'default';
+    const snapshot = createSafeBackup(tenantId, `manual_${req.user?.username || 'admin'}`);
+    res.json({ success: true, snapshot, ...getBackupStatus(tenantId) });
+  } catch (err) {
+    console.error('[DB Backup Create Error]:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/settings/db-backup/download - Stream verified .db backup directly (zero RAM spike)
+router.get('/db-backup/download', (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  try {
+    const tenantId = req.tenantId || 'default';
+    const wantFresh = req.query.fresh === '1' || req.query.fresh === 'true';
+    const requestedFile = req.query.file ? String(req.query.file) : null;
+
+    const target = wantFresh
+      ? (() => {
+          const snap = createSafeBackup(tenantId, `download_${req.user?.username || 'admin'}`);
+          return { filePath: snap.filePath, filename: snap.filename };
+        })()
+      : resolveBackupDownloadPath(tenantId, requestedFile);
+
+    const stat = fs.statSync(target.filePath);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${target.filename}"`);
+    res.setHeader('Content-Length', String(stat.size));
+    res.setHeader('Cache-Control', 'no-store');
+
+    const stream = fs.createReadStream(target.filePath);
+    stream.on('error', (err) => {
+      console.error('[DB Backup Stream Error]:', err.message);
+      if (!res.headersSent) res.status(500).json({ error: 'Failed to stream backup file' });
+    });
+    stream.pipe(res);
+  } catch (err) {
+    console.error('[DB Backup Download Error]:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

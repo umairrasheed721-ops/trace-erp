@@ -41,6 +41,9 @@ router.post('/:id/resync', ordersController.resyncOrder);
 // POST /api/orders/:id/verify-address - Geocode and verify address using Google Maps Geocoding API
 router.post('/:id/verify-address', ordersController.verifyAddress);
 
+// POST /api/orders/:id/verify-advance - Cross-verify bank advance payment & mark full paid with audit trail
+router.post('/:id/verify-advance', ordersController.verifyAdvancePayment);
+
 // POST /api/orders/update-legacy-financials - Run historical financials sync for all tenants
 router.post('/update-legacy-financials', ordersController.updateLegacyFinancials);
 

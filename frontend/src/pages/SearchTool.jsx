@@ -12,6 +12,8 @@ import { SaveViewModal, ColumnPickerModal, AgingConfigModal, NameRulesModal } fr
 import OrderHistoryModal from '../components/OrderHistoryModal'
 import ReadyTagCleanupModal from '../components/ReadyTagCleanupModal'
 import BookingDispatchModal from '../components/BookingDispatchModal'
+import PickListModal from '../components/PickListModal'
+import AdvanceVerifyModal from '../components/AdvanceVerifyModal'
 import ApiStatusBanner from '../components/ApiStatusBanner'
 import ErrorBoundary from '../components/ErrorBoundary'
 import CommandCenterHeader from '../components/CommandCenter/Layout/CommandCenterHeader'
@@ -22,7 +24,7 @@ import usePersistentState from '../hooks/usePersistentState'
 
 const DATE_PRESETS = ['Today','Yesterday','This Week','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
 const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
-const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[IN TRANSIT]','[STUCK PIPELINE]','[RETURNED]','[PAID]','[SURPLUS PAYOUT]','[READY TO BOOK]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[MISSING COST]','[AUDIT: MISSING CHARGES]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
+const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[IN TRANSIT]','[STUCK PIPELINE]','[RETURNED]','[PAID]','[SURPLUS PAYOUT]','[ADVANCE VERIFY]','[UNFULFILLED TRACKED]','[READY TO BOOK]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[MISSING COST]','[AUDIT: MISSING CHARGES]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
 const STATUS_OPTIONS = ['All Statuses',...SPECIAL_MODES,'Pending','Delivered','Return Received','Cancelled','Returned','Booked','Shipper Advice','Undelivered','Refused','Attempted']
 
 function useDebounce(value, delay) {
@@ -39,6 +41,8 @@ export default function SearchTool() {
   const [activeRowId, setActiveRowId] = useState(null)
   const [showReadyTagCleanup, setShowReadyTagCleanup] = useState(false)
   const [bookingModalState, setBookingModalState] = useState({ show: false, courier: 'PostEx', orders: [] })
+  const [pickListState, setPickListState] = useState({ show: false, ids: [] })
+  const [advanceVerifyOrder, setAdvanceVerifyOrder] = useState(null)
   const canSeeFinancials = user?.role === 'admin'
   const location = useLocation()
   const navigate = useNavigate()
@@ -1789,6 +1793,41 @@ export default function SearchTool() {
 
 
 
+  const handleBulkRetryFulfillment = async () => {
+    if (selectedIds.length === 0) return
+    addToast(`🔁 Retrying Shopify fulfillment for ${selectedIds.length} selected order(s)...`, 'info')
+    try {
+      const res = await fetch('/api/orders/bulk-retry-fulfillment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ ids: selectedIds, store_id: activeStoreId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.success) throw new Error(data.error || 'Retry fulfillment failed')
+      const doneIds = new Set((data.details || []).filter(d => d.status === 'fulfilled' || d.status === 'already_fulfilled').map(d => d.id))
+      if (doneIds.size > 0) {
+        setAllOrders(prev => prev.map(o => doneIds.has(o.id) ? { ...o, fulfillment_status: 'fulfilled' } : o))
+      }
+      const failedList = (data.details || []).filter(d => d.status === 'failed').map(d => ({ id: d.id, ref_number: d.ref_number, reason: d.message }))
+      if (failedList.length > 0 && typeof setBulkFailureReport === 'function') {
+        setBulkFailureReport({
+          actionType: 'Retry Shopify Fulfillment',
+          success: (data.fulfilled || 0) + (data.alreadyFulfilled || 0),
+          failed: failedList.length,
+          failedOrders: failedList,
+        })
+      }
+      addToast(
+        `✅ Shopify Fulfill Retry: ${data.fulfilled || 0} fulfilled, ${data.alreadyFulfilled || 0} already synced${data.failed ? `, ${data.failed} failed` : ''}`,
+        data.failed ? 'warning' : 'success',
+        4000
+      )
+      setSelectedIds([])
+    } catch (err) {
+      addToast(`❌ Retry Fulfillment Error: ${err.message}`, 'error')
+    }
+  }
+
   const deliveryRate = kpi.total > 0 ? ((kpi.delivered / kpi.total) * 100).toFixed(1) : 0
   return (
     <div className={compactMode ? 'ultra-compact' : ''}>
@@ -1860,6 +1899,8 @@ export default function SearchTool() {
         handleBulkBookPostEx={handleBulkBookPostEx}
         handleBulkBookInstaworld={handleBulkBookInstaworld}
         handleBulkCancel={handleBulkCancel}
+        handleOpenPickList={() => setPickListState({ show: true, ids: selectedIds })}
+        handleBulkRetryFulfillment={handleBulkRetryFulfillment}
         handleBulkWhatsApp={handleStartWAQueue}
         handleExportTracking={handleExportTracking}
         totalMatching={totalCount}
@@ -2012,6 +2053,7 @@ export default function SearchTool() {
         clearAllFilters={handleClear}
         activeRowId={activeRowId}
         setActiveRowId={setActiveRowId}
+        onOpenVerifyAdvance={setAdvanceVerifyOrder}
       />
 
       {/* MODALS */}
@@ -2094,6 +2136,7 @@ export default function SearchTool() {
         orders={bookingModalState.orders}
         activeStore={activeStore}
         addToast={addToast}
+        onOpenPickList={(ids) => setPickListState({ show: true, ids })}
         onStoreDefaultsSaved={(saved) => {
           if (activeStore?.id && setStores) {
             setStores(prev => prev.map(s => s.id === activeStore.id ? { ...s, ...saved } : s))
@@ -2137,6 +2180,24 @@ export default function SearchTool() {
             fetchBacklogDates()
           }
         }}
+      />
+
+      <PickListModal
+        show={pickListState.show}
+        orderIds={pickListState.ids}
+        onClose={() => setPickListState(prev => ({ ...prev, show: false }))}
+        addToast={addToast}
+      />
+
+      <AdvanceVerifyModal
+        order={advanceVerifyOrder}
+        onClose={() => setAdvanceVerifyOrder(null)}
+        onVerified={(updatedOrder) => {
+          if (updatedOrder?.id) {
+            handleLocalOrderUpdate(updatedOrder)
+          }
+        }}
+        addToast={addToast}
       />
 
       {historyOrder && (

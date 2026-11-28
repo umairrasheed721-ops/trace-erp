@@ -49,6 +49,10 @@ function getOrderFilters(req) {
       whereClauses.push("(o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—') AND LOWER(o.delivery_status) != 'cancelled'");
     } else if (s.includes('UNPAID DELIVERED')) {
       whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND ABS(COALESCE(o.price, 0) - COALESCE(o.paid_amount, 0)) > 0.9 AND (o.payment_status IS NULL OR (o.payment_status != 'Payment Posted' AND o.payment_status != 'Refunded' AND o.payment_status != 'Returned'))");
+    } else if (s.includes('ADVANCE VERIFY')) {
+      whereClauses.push("o.booked_cod_amount IS NOT NULL AND ABS(COALESCE(o.price, 0) - COALESCE(o.booked_cod_amount, 0)) > 0.9 AND ABS(COALESCE(o.price, 0) - COALESCE(o.paid_amount, 0)) > 0.9 AND LOWER(COALESCE(o.delivery_status, '')) NOT IN ('cancelled', 'returned', 'return received')");
+    } else if (s.includes('UNFULFILLED TRACKED')) {
+      whereClauses.push("o.tracking_number IS NOT NULL AND TRIM(o.tracking_number) NOT IN ('', '—') AND LOWER(COALESCE(o.delivery_status, '')) != 'cancelled' AND LOWER(COALESCE(o.fulfillment_status, 'unfulfilled')) IN ('', 'unfulfilled', 'partial')");
     } else if (s.includes('MISSING COST')) {
       whereClauses.push("LOWER(o.delivery_status) NOT IN ('cancelled', 'returned', 'return received', 'rto') AND (o.cost IS NULL OR o.cost = 0) AND o.items_count > 0");
     } else if (s.includes('OVERDUE PAYOUT')) {

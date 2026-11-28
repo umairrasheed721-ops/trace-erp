@@ -367,6 +367,7 @@ export default function BookingDispatchModal({
   activeStore,
   onStoreDefaultsSaved,
   onBookingSubmitted,
+  onOpenPickList,
   addToast,
 }) {
   const meta = getCourierMeta(courier);
@@ -390,6 +391,9 @@ export default function BookingDispatchModal({
   const [validCities, setValidCities] = useState([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [citiesSource, setCitiesSource] = useState('');
+  const [riskById, setRiskById] = useState({});
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [highRiskCount, setHighRiskCount] = useState(0);
   const [filterText, setFilterText] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -449,6 +453,46 @@ export default function BookingDispatchModal({
 
     // Load live active operational cities for THIS specific courier (auto-syncs every 24h)
     loadCourierCities(false);
+
+    // Pre-Dispatch Risk Shield: Check Blacklist, High RTO & 48h Duplicate Phone Orders in 1 batched call
+    setRiskById({});
+    setHighRiskCount(0);
+    if (orders.length > 0) {
+      setRiskLoading(true);
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+      fetch(`${apiUrl}/api/orders/booking-risk-check`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ ids: orders.map(o => o.id), store_id: storeId }),
+      })
+        .then(r => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data?.success || !data.risks) return;
+          setRiskById(data.risks);
+          setHighRiskCount(Number(data.highRiskCount) || 0);
+          // Auto-uncheck any high-risk/blacklisted/duplicate order so operator must verify before dispatch
+          const autoOffIds = Object.entries(data.risks)
+            .filter(([, info]) => info?.autoUncheck)
+            .map(([idStr]) => idStr);
+          if (autoOffIds.length > 0) {
+            setIncludedIds((prev) => {
+              const next = { ...prev };
+              autoOffIds.forEach((idStr) => {
+                const numId = Number(idStr);
+                if (Object.prototype.hasOwnProperty.call(next, numId)) next[numId] = false;
+                if (Object.prototype.hasOwnProperty.call(next, idStr)) next[idStr] = false;
+              });
+              return next;
+            });
+          }
+        })
+        .catch(() => {})
+        .finally(() => setRiskLoading(false));
+    }
   }, [show, courier, storeId]);
 
   const loadCourierCities = async (forceRefresh = false) => {
@@ -1008,6 +1052,27 @@ export default function BookingDispatchModal({
             )}
           </div>
 
+          {/* Pre-Dispatch Risk Shield Banner */}
+          {riskLoading && (
+            <div style={{
+              padding: '7px 11px', borderRadius: 9, fontSize: '0.73rem', fontWeight: 700,
+              background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)', color: '#6366f1',
+            }}>
+              🛡️ Scanning Blacklist, RTO history &amp; 48h duplicate orders...
+            </div>
+          )}
+          {!riskLoading && highRiskCount > 0 && (
+            <div style={{
+              padding: '8px 12px', borderRadius: 9, fontSize: '0.74rem', fontWeight: 700,
+              background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.38)', color: '#dc2626',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
+            }}>
+              <span>
+                🛡️ Pre-Dispatch Risk Shield: <strong>{highRiskCount} high-risk order{highRiskCount === 1 ? '' : 's'}</strong> auto-unchecked (Blacklisted / High RTO / 48h Duplicate). Call &amp; verify before re-checking.
+              </span>
+            </div>
+          )}
+
           {visibleOrderStates.map(({ order, blocked }) => {
             const checked = !blocked && Boolean(includedIds[order.id]);
             const codInfo = getOrderCodInfo(order);
@@ -1017,14 +1082,16 @@ export default function BookingDispatchModal({
             const cityVal = cityById[order.id] !== undefined ? cityById[order.id] : (order.city || '');
             const isHardBlocked = blocked && blocked.code !== 'city';
             const safeHints = detectSafeNoteHints(order.notes, remVal);
+            const risk = riskById[String(order.id)] || null;
+            const isHighRisk = Boolean(risk && (risk.level === 'critical' || risk.level === 'high'));
 
             return (
               <div
                 key={order.id}
                 style={{
-                  border: `1px solid ${blocked ? 'rgba(239,68,68,0.35)' : checked ? 'var(--border-bright)' : 'var(--border)'}`,
-                  background: blocked ? 'rgba(239,68,68,0.05)' : checked ? 'var(--bg-surface)' : 'var(--bg-elevated)',
-                  opacity: checked ? 1 : 0.72,
+                  border: `1px solid ${blocked || isHighRisk ? 'rgba(239,68,68,0.45)' : checked ? 'var(--border-bright)' : 'var(--border)'}`,
+                  background: blocked ? 'rgba(239,68,68,0.05)' : isHighRisk ? 'rgba(239,68,68,0.04)' : checked ? 'var(--bg-surface)' : 'var(--bg-elevated)',
+                  opacity: checked ? 1 : 0.78,
                   borderRadius: 11,
                   padding: '10px 12px',
                   display: 'flex',
@@ -1249,6 +1316,33 @@ export default function BookingDispatchModal({
                   )}
                 </div>
 
+                {/* Inline Pre-Dispatch Risk Shield Badges (Blacklist / High RTO / 48h Duplicate) */}
+                {risk?.flags?.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingLeft: 25 }}>
+                    {risk.flags.map((f, idx) => (
+                      <span
+                        key={`${f.type}-${idx}`}
+                        style={{
+                          fontSize: '0.69rem',
+                          fontWeight: 800,
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          background: f.type === 'rto_warn' ? 'rgba(245,158,11,0.14)' : 'rgba(239,68,68,0.14)',
+                          color: f.type === 'rto_warn' ? '#b45309' : '#dc2626',
+                          border: `1px solid ${f.type === 'rto_warn' ? 'rgba(245,158,11,0.35)' : 'rgba(239,68,68,0.35)'}`,
+                        }}
+                      >
+                        {f.label}
+                      </span>
+                    ))}
+                    {risk.autoUncheck && !checked && !blocked && (
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                        (Auto-unchecked — tick checkbox above to override)
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Per-Order Slip Remarks + Quick Toggle Chips */}
                 {!isHardBlocked && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingLeft: 25 }}>
@@ -1369,7 +1463,19 @@ export default function BookingDispatchModal({
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {onOpenPickList && readyOrders.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => onOpenPickList(readyOrders.map(o => o.id))}
+                disabled={submitting}
+                title="Open SKU-wise consolidated Warehouse Pick-List for ready orders"
+                style={{ padding: '9px 14px', borderRadius: 9, fontSize: '0.8rem', fontWeight: 700 }}
+              >
+                📋 Pick-List ({readyOrders.length})
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-secondary"

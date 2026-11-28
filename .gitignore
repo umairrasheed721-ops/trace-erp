@@ -74,3 +74,6 @@ scratch/
 
 
 
+
+# Local SQLite backup snapshots
+backend/backups/

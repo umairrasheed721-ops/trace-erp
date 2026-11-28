@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import AddStoreModal from '../components/Connect/AddStoreModal'
 import StoreDetailWorkspace from '../components/Connect/StoreDetailWorkspace'
+import DbBackupCard from '../components/Connect/DbBackupCard'
 
 const FROZEN_DOMAIN = '1i7tnb-bb.myshopify.com'
 
@@ -210,6 +211,9 @@ export default function Connect() {
           accent="#0ea5e9"
         />
       </div>
+
+      {/* ─── SQLite Database Backup & Safety Net (Admin) ─── */}
+      <DbBackupCard addToast={addToast} />
 
       {/* ─── Master-Detail Workspace ─── */}
       {loadingFleet ? (

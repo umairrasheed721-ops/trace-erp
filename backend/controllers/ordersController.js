@@ -884,6 +884,86 @@ exports.syncCities = async (req, res) => {
   }
 };
 
+exports.verifyAdvancePayment = async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id, 10);
+    if (!orderId) return res.status(400).json({ error: 'Invalid order id' });
+
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const {
+      bank_ref = '',
+      bank_account = 'Bank / Wallet',
+      advance_date = '',
+      advance_amount,
+      notes = '',
+      mark_full_paid = true,
+    } = req.body || {};
+
+    const orderPrice = Math.round((parseFloat(order.price) || 0) * 100) / 100;
+    const oldPaid = Math.round((parseFloat(order.paid_amount) || 0) * 100) / 100;
+    const bookedCod = (order.booked_cod_amount !== null && order.booked_cod_amount !== undefined)
+      ? Math.round(Number(order.booked_cod_amount) * 100) / 100
+      : null;
+
+    const defaultAdvance = bookedCod !== null
+      ? Math.max(0, Math.round((orderPrice - bookedCod) * 100) / 100)
+      : Math.max(0, Math.round((orderPrice - oldPaid) * 100) / 100);
+    const parsedAdv = (advance_amount !== undefined && advance_amount !== null && String(advance_amount).trim() !== '' && Number.isFinite(Number(advance_amount)))
+      ? Math.max(0, Math.round(Number(advance_amount) * 100) / 100)
+      : defaultAdvance;
+
+    const newPaid = mark_full_paid
+      ? orderPrice
+      : Math.min(orderPrice, Math.round((oldPaid + parsedAdv) * 100) / 100);
+    const newPaymentStatus = Math.abs(newPaid - orderPrice) <= 0.9 ? 'Paid' : (order.payment_status || 'Pending');
+
+    const cleanDate = String(advance_date || '').trim() || new Date().toISOString().split('T')[0];
+    const cleanRef = String(bank_ref || '').trim().slice(0, 120);
+    const cleanAcct = String(bank_account || 'Bank / Wallet').trim().slice(0, 60);
+    const cleanNotes = String(notes || '').trim().slice(0, 180);
+    const actor = req.user?.username || 'Admin';
+
+    const auditTag = `[✅ Advance Verified ${cleanDate}: Rs ${parsedAdv.toLocaleString()} via ${cleanAcct}${cleanRef ? ` | Ref: ${cleanRef}` : ''}${cleanNotes ? ` | ${cleanNotes}` : ''} | By: ${actor}]`;
+    const mergedNotes = order.notes ? `${order.notes} | ${auditTag}` : auditTag;
+
+    db.prepare(`
+      UPDATE orders
+      SET paid_amount = ?,
+          payment_status = ?,
+          notes = ?,
+          advance_verified_at = datetime('now'),
+          advance_bank_ref = ?,
+          advance_verified_by = ?,
+          status_date = datetime('now')
+      WHERE id = ?
+    `).run(newPaid, newPaymentStatus, mergedNotes, cleanRef || `${cleanAcct} (${cleanDate})`, actor, orderId);
+
+    db.logOrderChange({
+      order_id: orderId,
+      user_id: req.user?.id || 0,
+      type: 'ADVANCE_VERIFIED',
+      old_val: { paid_amount: oldPaid, payment_status: order.payment_status, booked_cod_amount: bookedCod },
+      new_val: { paid_amount: newPaid, payment_status: newPaymentStatus, advance_amount: parsedAdv, bank_account: cleanAcct, bank_ref: cleanRef, advance_date: cleanDate },
+    });
+    db.logAction({
+      order_id: orderId,
+      user_id: req.user?.id || 0,
+      action: 'VERIFY_ADVANCE_PAYMENT',
+      details: { advance_amount: parsedAdv, bank_account: cleanAcct, bank_ref: cleanRef, advance_date: cleanDate, new_paid: newPaid, by: actor },
+    });
+
+    const updated = db.prepare('SELECT o.*, s.shop_domain, s.store_name FROM orders o LEFT JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(orderId);
+    broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+
+    res.json({ success: true, order: updated, verified_advance: parsedAdv, paid_amount: newPaid });
+  } catch (err) {
+    console.error('[verifyAdvancePayment] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 exports.resyncOrder = async (req, res) => {
   try {
     const orderId = parseInt(req.params.id);

@@ -149,6 +149,44 @@ export default function CommandCenterHeader({ compactMode, preset, setPreset, st
             >
               📦 Pending
             </button>
+            <button
+              type="button"
+              onClick={() => { setPreset && setPreset('All Time'); setStatus && setStatus('[ADVANCE VERIFY]'); }}
+              className="btn btn-xs"
+              style={{
+                padding: '3px 10px',
+                fontSize: '0.7rem',
+                borderRadius: 12,
+                background: status === '[ADVANCE VERIFY]' ? '#d97706' : 'var(--bg-elevated)',
+                color: status === '[ADVANCE VERIFY]' ? '#ffffff' : '#b45309',
+                border: status === '[ADVANCE VERIFY]' ? '1px solid #d97706' : '1px solid rgba(245,158,11,0.4)',
+                cursor: 'pointer',
+                fontWeight: 700,
+                transition: 'all 0.15s ease'
+              }}
+              title="Orders booked with custom COD awaiting bank advance cross-verification"
+            >
+              🏦 Advance Verify
+            </button>
+            <button
+              type="button"
+              onClick={() => { setPreset && setPreset('All Time'); setStatus && setStatus('[UNFULFILLED TRACKED]'); }}
+              className="btn btn-xs"
+              style={{
+                padding: '3px 10px',
+                fontSize: '0.7rem',
+                borderRadius: 12,
+                background: status === '[UNFULFILLED TRACKED]' ? '#0284c7' : 'var(--bg-elevated)',
+                color: status === '[UNFULFILLED TRACKED]' ? '#ffffff' : '#0284c7',
+                border: status === '[UNFULFILLED TRACKED]' ? '1px solid #0284c7' : '1px solid rgba(2,132,199,0.35)',
+                cursor: 'pointer',
+                fontWeight: 700,
+                transition: 'all 0.15s ease'
+              }}
+              title="Tracked orders still marked Unfulfilled on Shopify — select & Retry Fulfill"
+            >
+              🔁 Unfulfilled Tracked
+            </button>
           </div>
         </div>
       </div>
