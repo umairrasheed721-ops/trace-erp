@@ -1645,17 +1645,19 @@ module.exports = [
       };
 
       const upd = db.prepare('UPDATE orders SET courier = ? WHERE id = ?');
-      const healBatch = db.transaction((rows) => {
-        let count = 0;
-        for (const r of rows) {
+      let healed = 0;
+      db.exec('BEGIN');
+      try {
+        for (const r of corrupted) {
           const fixed = detectCourierFromTracking(r.tracking_number, r.tags);
           upd.run(fixed, r.id);
-          count++;
+          healed++;
         }
-        return count;
-      });
-
-      const healed = healBatch(corrupted);
+        db.exec('COMMIT');
+      } catch (txErr) {
+        try { db.exec('ROLLBACK'); } catch (_) {}
+        throw txErr;
+      }
       if (healed > 0) {
         console.log(`✅ [Migration #60] Auto-healed ${healed} orders with numeric courier_fee leaked into courier column.`);
       }
