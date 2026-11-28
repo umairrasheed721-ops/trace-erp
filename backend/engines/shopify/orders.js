@@ -809,11 +809,9 @@ function mapShopifyStatus(order) {
   if (order.return_status === 'returned' || order.financial_status === 'refunded' || order.financial_status === 'partially_refunded') {
     return 'Returned';
   }
-  
-  if (order.fulfillment_status === 'fulfilled' && order.financial_status === 'paid') {
-    return 'Delivered';
-  }
 
+  // Note: Never mark Paid + Fulfilled as 'Delivered' automatically — Prepaid orders are Paid BEFORE dispatch!
+  // Real delivery is confirmed by courier tracking (PostEx/Instaworld) or explicit Shopify shipment_status === 'delivered'.
   const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
   const lastFul = fulfillments[fulfillments.length - 1];
   if (lastFul?.shipment_status === 'delivered') return 'Delivered';

@@ -716,11 +716,17 @@ async function cancelOrderBookingCore(orderId, actor = 'CancelBooking', options 
   }
 
   const statusLower = (order.delivery_status || '').trim().toLowerCase();
+  const courierStatusLower = (order.courier_status || '').trim().toLowerCase();
+  const isUnverifiedPrepaidDelivered = statusLower === 'delivered'
+    && (order.payment_status || '').trim().toLowerCase() === 'paid'
+    && Number(order.paid_amount || 0) <= 0.9
+    && !courierStatusLower.includes('delivered');
+
   const blockedFinal = ['delivered', 'returned', 'return received', 'cancelled'];
-  if (blockedFinal.includes(statusLower)) {
+  if (blockedFinal.includes(statusLower) && !isUnverifiedPrepaidDelivered) {
     return { ok: false, status: 409, error: `Cannot cancel booking when order status is '${order.delivery_status}'` };
   }
-  if (strictBookedOnly && !['booked', 'pending', 'confirmed', ''].includes(statusLower)) {
+  if (strictBookedOnly && !['booked', 'pending', 'confirmed', ''].includes(statusLower) && !isUnverifiedPrepaidDelivered) {
     return { ok: false, status: 409, error: `Cannot cancel booking from extension while status is '${order.delivery_status}'` };
   }
 

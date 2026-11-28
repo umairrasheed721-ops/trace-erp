@@ -1521,6 +1521,28 @@ module.exports = [
     } catch (e) {
       console.error('Migration #54 failed:', e.message);
     }
+  },
+
+  // 55. Auto-heal recent Prepaid orders falsely marked 'Delivered' on fulfillment by legacy mapShopifyStatus (Rule 12)
+  (db) => {
+    try {
+      const resHealed = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Booked'
+        WHERE LOWER(delivery_status) = 'delivered'
+          AND LOWER(COALESCE(payment_status, '')) = 'paid'
+          AND COALESCE(paid_amount, 0) <= 0.9
+          AND tracking_number IS NOT NULL
+          AND TRIM(tracking_number) NOT IN ('', '—')
+          AND (courier_status IS NULL OR TRIM(courier_status) IN ('', '—', 'N/A', 'Unbooked', 'Booked', 'At Merchant Warehouse', 'Order Created'))
+          AND date(COALESCE(NULLIF(order_date, ''), created_timestamp)) >= date('now', '-14 days')
+      `).run();
+      if (resHealed.changes > 0) {
+        console.log(`✅ [Migration #55] Auto-healed ${resHealed.changes} recent Prepaid orders falsely marked 'Delivered' before courier delivery → 'Booked'.`);
+      }
+    } catch (e) {
+      console.error('Migration #55 failed:', e.message);
+    }
   }
 ];
 
