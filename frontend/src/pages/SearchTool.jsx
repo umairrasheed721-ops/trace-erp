@@ -558,15 +558,24 @@ export default function SearchTool() {
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/confirm`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
       if (res.ok) {
-        addToast('✅ Order Confirmed!', 'success')
+        if (data.tags !== undefined) {
+          setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Confirmed', tags: data.tags } : o))
+        }
+        addToast(
+          data.shopifyTagSynced
+            ? '✅ Order Confirmed & "Ready to Book" tagged on Shopify!'
+            : (data.shopifyTagError ? `✅ Confirmed in ERP (⚠️ Shopify tag failed: ${data.shopifyTagError})` : '✅ Order Confirmed!'),
+          data.shopifyTagError ? 'warning' : 'success'
+        )
         fetchBacklogDates();
       } else {
-        throw new Error('Server rejected confirmation')
+        throw new Error(data.error || 'Server rejected confirmation')
       }
-    } catch {
+    } catch (err) {
       setAllOrders(previousOrders)
-      addToast('Network error / Failed to confirm order', 'error')
+      addToast(err?.message || 'Network error / Failed to confirm order', 'error')
     }
   }, [allOrders, addToast, fetchBacklogDates, markOrderSelfSaved])
 
@@ -577,15 +586,24 @@ export default function SearchTool() {
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/revert-confirm`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
       if (res.ok) {
-        addToast('↩️ Order reverted to Pending', 'info')
+        if (data.tags !== undefined) {
+          setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Pending', tags: data.tags } : o))
+        }
+        addToast(
+          data.shopifyTagSynced
+            ? '↩️ Reverted to Pending & "Ready to Book" removed from Shopify'
+            : (data.shopifyTagError ? `↩️ Reverted in ERP (⚠️ Shopify tag remove failed: ${data.shopifyTagError})` : '↩️ Order reverted to Pending'),
+          data.shopifyTagError ? 'warning' : 'info'
+        )
         fetchBacklogDates();
       } else {
-        throw new Error('Server rejected revert')
+        throw new Error(data.error || 'Server rejected revert')
       }
-    } catch {
+    } catch (err) {
       setAllOrders(previousOrders)
-      addToast('Network error / Failed to revert order', 'error')
+      addToast(err?.message || 'Network error / Failed to revert order', 'error')
     }
   }, [allOrders, addToast, fetchBacklogDates, markOrderSelfSaved])
 
@@ -679,14 +697,18 @@ export default function SearchTool() {
   const handleCancelBooking = useCallback(async (orderId) => {
     if (!confirm('🛑 Cancel this courier booking?')) return
     const previousOrders = [...allOrders];
-    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: null, delivery_status: 'Confirmed' } : o))
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: null, courier: null, courier_status: null, delivery_status: 'Pending' } : o))
     setBookingId(orderId)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/cancel-booking`, { method: 'POST' })
       const data = await res.json()
       if (data.success) {
-        addToast('✅ Booking Cancelled', 'info')
+        const parts = ['✅ Booking Cancelled → Pending'];
+        if (data.shopifyFulfillmentCancelled) parts.push('Shopify Unfulfilled');
+        if (data.shopifyTagRemoved) parts.push('Tag Removed');
+        if (data.fifoRestored) parts.push('Stock Restored');
+        addToast(parts.join(' · '), 'info')
         fetchBacklogDates();
       } else {
         throw new Error(data.error || 'Courier rejected cancellation')
@@ -751,7 +773,10 @@ export default function SearchTool() {
       })
       const data = await res.json()
       if (data.success) {
-        addToast(`✅ Booked! Tracking: ${data.tracking_number}`, 'success')
+        const msg = data.shopifyFulfilled === false
+          ? `✅ Booked (${data.tracking_number}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
+          : `✅ Booked! Tracking: ${data.tracking_number}${data.prepaid ? ' (Prepaid COD=0)' : ''}`
+        addToast(msg, data.shopifyFulfilled === false ? 'warning' : 'success')
         setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'Instaworld', delivery_status: 'Booked' } : o))
         fetchBacklogDates();
       } else {
@@ -780,7 +805,10 @@ export default function SearchTool() {
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/book-postex`, { method: 'POST' })
       const data = await res.json()
       if (data.success) {
-        addToast(`✅ Booked! Tracking: ${data.tracking_number}`, 'success')
+        const msg = data.shopifyFulfilled === false
+          ? `✅ Booked (${data.tracking_number}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
+          : `✅ Booked! Tracking: ${data.tracking_number}${data.prepaid ? ' (Prepaid COD=0)' : ''}`
+        addToast(msg, data.shopifyFulfilled === false ? 'warning' : 'success')
         setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'PostEx', delivery_status: 'Booked' } : o))
         fetchBacklogDates();
       } else {

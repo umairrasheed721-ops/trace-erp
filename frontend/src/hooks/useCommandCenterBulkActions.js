@@ -108,8 +108,10 @@ export default function useCommandCenterBulkActions({
           })
           const data = await res.json()
           if (res.ok) {
-            addToast(`✅ ${selectedIds.length} orders confirmed!`, 'success')
-            setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Confirmed' } : o))
+            const confirmedSet = new Set(data.confirmedIds || selectedIds)
+            const extra = data.skippedZeroCost ? ` (${data.skippedZeroCost} skipped: Rs 0 cost)` : ''
+            addToast(`✅ ${data.count ?? selectedIds.length} confirmed · ${data.shopifySynced ?? 0} tagged "Ready to Book" on Shopify${extra}`, 'success')
+            setAllOrders(prev => prev.map(o => confirmedSet.has(o.id) ? { ...o, delivery_status: 'Confirmed' } : o))
             setSelectedIds([])
             if (typeof fetchBacklogDates === 'function') fetchBacklogDates();
           } else {
@@ -126,7 +128,7 @@ export default function useCommandCenterBulkActions({
     setConfirmDialog({
       isOpen: true,
       title: '↩️ Revert to Pending',
-      message: `Revert ${selectedIds.length} orders to Pending?`,
+      message: `Revert ${selectedIds.length} untracked order(s) to Pending & remove "Ready to Book" tag on Shopify? (Booked/tracked orders are protected and skipped.)`,
       onConfirm: async () => {
         setBulkActionLoading(true)
         try {
@@ -140,11 +142,16 @@ export default function useCommandCenterBulkActions({
             },
             body: JSON.stringify({ ids: selectedIds })
           })
+          const data = await res.json().catch(() => ({}))
           if (res.ok) {
-            addToast(`↩️ ${selectedIds.length} orders reverted!`, 'info')
-            setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Pending', tracking_number: null, courier: null } : o))
+            const revertedSet = new Set(data.revertedIds || [])
+            const skipNote = data.skippedTracked ? ` · ⚠️ ${data.skippedTracked} tracked skipped (use Cancel Booking)` : ''
+            addToast(`↩️ ${data.count ?? 0} reverted · ${data.shopifySynced ?? 0} Shopify tags removed${skipNote}`, data.skippedTracked ? 'warning' : 'info')
+            setAllOrders(prev => prev.map(o => revertedSet.has(o.id) ? { ...o, delivery_status: 'Pending' } : o))
             setSelectedIds([])
             if (typeof fetchBacklogDates === 'function') fetchBacklogDates();
+          } else {
+            addToast(`❌ Revert Failed: ${data.error || 'Unknown error'}`, 'error')
           }
         } catch { addToast('Bulk error', 'error') }
         finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }

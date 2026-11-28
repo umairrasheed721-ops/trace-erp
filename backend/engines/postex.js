@@ -95,9 +95,17 @@ async function cancelPostExOrder(store, trackingNumber) {
       body: JSON.stringify({ trackingNumber })
     });
 
-    const data = await response.json();
-    // If statusCode is 200, it's successful
-    return data.statusCode === '200';
+    const data = await response.json().catch(() => ({}));
+    if (String(data.statusCode) === '200') {
+      return true;
+    }
+    const msg = String(data.statusMessage || data.message || '').trim();
+    // Treat already-cancelled orders on PostEx as cleanly cancelled so ERP doesn't stay stuck
+    if (/already\s+cancel/i.test(msg) || /order\s+cancelled/i.test(msg)) {
+      console.log(`ℹ️ [PostEx Cancel] ${trackingNumber} already cancelled on PostEx (${msg}).`);
+      return true;
+    }
+    throw new Error(msg || `PostEx rejected cancellation (statusCode: ${data.statusCode || response.status})`);
   });
 }
 

@@ -394,16 +394,39 @@ exports.updateAddressLiveShopify = async (req, res) => {
   }
 };
 
-exports.revertConfirm = (req, res) => {
+exports.revertConfirm = async (req, res) => {
+  const { READY_TO_BOOK_TAG, mergeOrderTagString, updateShopifyOrderTag } = require('../engines/shopify');
   try {
     const orderId = parseInt(req.params.id);
-    const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(orderId);
-    db.prepare("UPDATE orders SET delivery_status = 'Pending', status_date = datetime('now') WHERE id = ?")
-      .run(orderId);
-    if (order) {
-      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+    const order = db.prepare(`
+      SELECT o.id, o.store_id, o.shopify_order_id, o.tracking_number, o.tags, s.shop_domain, s.access_token
+      FROM orders o LEFT JOIN stores s ON o.store_id = s.id
+      WHERE o.id = ?
+    `).get(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    if (order.tracking_number && String(order.tracking_number).trim() !== '') {
+      return res.status(409).json({ error: 'Order has an active tracking number — use Cancel Booking instead of Revert.' });
     }
-    res.json({ success: true });
+
+    const { tags: localTags } = mergeOrderTagString(order.tags, READY_TO_BOOK_TAG, 'remove');
+    db.prepare("UPDATE orders SET delivery_status = 'Pending', tags = ?, status_date = datetime('now') WHERE id = ?")
+      .run(localTags, orderId);
+
+    let shopifyTagSynced = false;
+    let shopifyTagError = null;
+    if (order.shopify_order_id && order.shop_domain && order.access_token) {
+      const tagRes = await updateShopifyOrderTag(order, order.shopify_order_id, READY_TO_BOOK_TAG, 'remove');
+      shopifyTagSynced = Boolean(tagRes.ok);
+      if (tagRes.ok && tagRes.tags !== undefined) {
+        db.prepare('UPDATE orders SET tags = ? WHERE id = ?').run(tagRes.tags, orderId);
+      } else if (!tagRes.ok && !tagRes.skipped) {
+        shopifyTagError = tagRes.error;
+      }
+    }
+
+    broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+    res.json({ success: true, shopifyTagSynced, shopifyTagError, tags: localTags });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -462,24 +485,40 @@ exports.patchErpStatus = (req, res) => {
   }
 };
 
-exports.confirmOrder = (req, res) => {
+exports.confirmOrder = async (req, res) => {
+  const { READY_TO_BOOK_TAG, mergeOrderTagString, updateShopifyOrderTag } = require('../engines/shopify');
   try {
     const orderId = parseInt(req.params.id);
-    const order = db.prepare('SELECT store_id, shopify_order_id, cost FROM orders WHERE id = ?').get(orderId);
+    const order = db.prepare(`
+      SELECT o.id, o.store_id, o.shopify_order_id, o.cost, o.tags, s.shop_domain, s.access_token
+      FROM orders o LEFT JOIN stores s ON o.store_id = s.id
+      WHERE o.id = ?
+    `).get(orderId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (!order.cost || order.cost <= 0) {
       return res.status(400).json({ error: 'Zero Cost Block: Please heal cost before confirming' });
     }
-    const result = db.prepare("UPDATE orders SET delivery_status = 'Confirmed', status_date = datetime('now') WHERE id = ?")
-      .run(orderId);
-      
-    console.log(`✅ Order ${orderId} confirmed. Rows affected: ${result.changes}`);
-      
-    if (order) {
-      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+
+    const { tags: localTags } = mergeOrderTagString(order.tags, READY_TO_BOOK_TAG, 'add');
+    const result = db.prepare("UPDATE orders SET delivery_status = 'Confirmed', tags = ?, status_date = datetime('now') WHERE id = ?")
+      .run(localTags, orderId);
+
+    let shopifyTagSynced = false;
+    let shopifyTagError = null;
+    if (order.shopify_order_id && order.shop_domain && order.access_token) {
+      const tagRes = await updateShopifyOrderTag(order, order.shopify_order_id, READY_TO_BOOK_TAG, 'add');
+      shopifyTagSynced = Boolean(tagRes.ok);
+      if (tagRes.ok && tagRes.tags !== undefined) {
+        db.prepare('UPDATE orders SET tags = ? WHERE id = ?').run(tagRes.tags, orderId);
+      } else if (!tagRes.ok && !tagRes.skipped) {
+        shopifyTagError = tagRes.error;
+      }
     }
-    
-    res.json({ success: true, changes: result.changes });
+
+    console.log(`✅ Order ${orderId} confirmed (Shopify "${READY_TO_BOOK_TAG}" tag: ${shopifyTagSynced ? 'synced' : shopifyTagError || 'skipped'}).`);
+    broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+
+    res.json({ success: true, changes: result.changes, shopifyTagSynced, shopifyTagError, tags: localTags });
   } catch (err) {
     console.error('Confirmation Error:', err.message);
     res.status(500).json({ error: err.message });
@@ -490,7 +529,7 @@ exports.bookPostex = async (req, res) => {
   const { createPostExOrder } = require('../engines/postex');
   const { fulfillShopifyOrder } = require('../engines/shopify');
   const { getBestMatch } = require('../engines/logistics');
-  
+
   try {
     const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -500,14 +539,21 @@ exports.bookPostex = async (req, res) => {
     if (order.tracking_number && order.tracking_number.trim() !== '') {
       return res.status(400).json({ error: 'Order already has a tracking number' });
     }
+    if (!order.city || order.city.trim() === '') {
+      return res.status(400).json({ error: 'Missing City: Please enter a valid delivery city before booking' });
+    }
 
     // Smart City Mapping
     const matchedCity = getBestMatch(order.city, 'PostEx');
     if (matchedCity) order.city = matchedCity;
 
+    // Prepaid Protection: Never charge COD on Paid orders
+    const isPrepaid = ['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase());
+    const bookingPayload = isPrepaid ? { ...order, price: 0, is_prepaid: true } : order;
+
     // 1. Create booking in PostEx
-    const trackingNumber = await createPostExOrder(order, order);
-    
+    const trackingNumber = await createPostExOrder(order, bookingPayload);
+
     // 2. Update local database
     db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?")
       .run(trackingNumber, 'PostEx', req.params.id);
@@ -518,16 +564,20 @@ exports.bookPostex = async (req, res) => {
       allocateOrderFifoOnDispatch(req.params.id, req.user?.username || 'Booking');
     } catch (fifoErr) { console.warn('[bookPostex FIFO Notice]:', fifoErr.message); }
 
-    // 3. Fulfill in Shopify
+    // 3. Fulfill in Shopify (surface warning if Shopify fails)
+    let shopifyFulfilled = false;
+    let shopifyError = null;
     try {
       await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx');
+      shopifyFulfilled = true;
     } catch (shopifyErr) {
+      shopifyError = shopifyErr.message;
       console.warn('PostEx Booked but Shopify Fulfillment Failed:', shopifyErr.message);
     }
 
     broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
 
-    res.json({ success: true, tracking_number: trackingNumber });
+    res.json({ success: true, tracking_number: trackingNumber, prepaid: isPrepaid, shopifyFulfilled, shopifyError });
   } catch (err) {
     console.error('PostEx Booking Error:', err.message);
     res.status(500).json({ error: err.message });
@@ -539,7 +589,7 @@ exports.bookInstaworld = async (req, res) => {
   const { fulfillShopifyOrder } = require('../engines/shopify');
   const { getBestMatch } = require('../engines/logistics');
   const { account_type } = req.body;
-  
+
   try {
     const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.store_name, s.gas_proxy_url FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -549,10 +599,17 @@ exports.bookInstaworld = async (req, res) => {
     if (order.tracking_number && order.tracking_number.trim() !== '') {
       return res.status(400).json({ error: 'Order already has a tracking number' });
     }
+    if (!order.city || order.city.trim() === '') {
+      return res.status(400).json({ error: 'Missing City: Please enter a valid delivery city before booking' });
+    }
 
     // Smart City Mapping
     const matchedCity = getBestMatch(order.city, 'Instaworld');
     if (matchedCity) order.city = matchedCity;
+
+    // Prepaid Protection: Never charge COD on Paid orders
+    const isPrepaid = ['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase());
+    const bookingPayload = isPrepaid ? { ...order, price: 0, is_prepaid: true } : order;
 
     let apiKey = order.instaworld_key;
     if (account_type === 'backup') {
@@ -562,8 +619,8 @@ exports.bookInstaworld = async (req, res) => {
     }
 
     // 1. Create booking (default courier_name to TCS under the hood for API compatibility)
-    const trackingNumber = await createInstaworldOrder(order, order, 'TCS', apiKey);
-    
+    const trackingNumber = await createInstaworldOrder(order, bookingPayload, 'TCS', apiKey);
+
     // 2. Update local database
     db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?")
       .run(trackingNumber, 'Instaworld', req.params.id);
@@ -574,16 +631,20 @@ exports.bookInstaworld = async (req, res) => {
       allocateOrderFifoOnDispatch(req.params.id, req.user?.username || 'Booking');
     } catch (fifoErr) { console.warn('[bookInstaworld FIFO Notice]:', fifoErr.message); }
 
-    // 3. Fulfill in Shopify
+    // 3. Fulfill in Shopify (surface warning if Shopify fails)
+    let shopifyFulfilled = false;
+    let shopifyError = null;
     try {
       await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'Instaworld');
+      shopifyFulfilled = true;
     } catch (shopifyErr) {
+      shopifyError = shopifyErr.message;
       console.warn('Instaworld Booked but Shopify Fulfillment Failed:', shopifyErr.message);
     }
 
     broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
 
-    res.json({ success: true, tracking_number: trackingNumber });
+    res.json({ success: true, tracking_number: trackingNumber, prepaid: isPrepaid, shopifyFulfilled, shopifyError });
   } catch (err) {
     console.error('Instaworld Booking Error:', err.message);
     res.status(500).json({ error: err.message });
@@ -618,29 +679,42 @@ async function cancelOrderBookingCore(orderId, actor = 'CancelBooking', options 
   const courier = (order.courier || '').toLowerCase();
   let success = false;
 
-  if (courier.includes('postex')) {
-    success = await cancelPostExOrder(order, order.tracking_number);
-  } else if (courier.includes('insta') || courier.includes('tcs') || courier.includes('lcs') || courier.includes('leopard')) {
-    success = await cancelInstaworldOrder(order, order.tracking_number);
-  } else {
-    // Manual cancellation for others
-    success = true;
+  try {
+    if (courier.includes('postex')) {
+      success = await cancelPostExOrder(order, order.tracking_number);
+    } else if (courier.includes('insta') || courier.includes('tcs') || courier.includes('lcs') || courier.includes('leopard')) {
+      success = await cancelInstaworldOrder(order, order.tracking_number);
+    } else {
+      // Manual cancellation for others
+      success = true;
+    }
+  } catch (courierErr) {
+    return { ok: false, status: 502, error: courierErr.message || 'Courier API rejected cancellation' };
   }
 
   if (!success) {
     return { ok: false, status: 500, error: 'Courier API rejected cancellation' };
   }
 
-  // Cancel Shopify fulfillment (non-blocking)
+  // Cancel Shopify fulfillment & remove Ready to Book tag (non-blocking)
+  const { cancelShopifyFulfillment, READY_TO_BOOK_TAG, mergeOrderTagString, updateShopifyOrderTag } = require('../engines/shopify');
   let shopifyFulfillmentCancelled = false;
   try {
     if (order.shopify_order_id) {
-      const { cancelShopifyFulfillment } = require('../engines/shopify');
       shopifyFulfillmentCancelled = Boolean(await cancelShopifyFulfillment(order, order.shopify_order_id));
     }
   } catch (shopifyErr) {
     console.warn(`⚠️ Failed to cancel Shopify fulfillment for order ${order.shopify_order_id}:`, shopifyErr.message);
   }
+
+  const { tags: localTags } = mergeOrderTagString(order.tags, READY_TO_BOOK_TAG, 'remove');
+  let shopifyTagRemoved = false;
+  try {
+    if (order.shopify_order_id && order.shop_domain && order.access_token) {
+      const tagRes = await updateShopifyOrderTag(order, order.shopify_order_id, READY_TO_BOOK_TAG, 'remove');
+      shopifyTagRemoved = Boolean(tagRes.ok);
+    }
+  } catch (_) {}
 
   // Reset ERP status cleanly to Pending (Rule 12: clear tracking_number & courier_status alongside Pending)
   db.prepare(`
@@ -649,9 +723,10 @@ async function cancelOrderBookingCore(orderId, actor = 'CancelBooking', options 
         courier = NULL,
         courier_status = NULL,
         delivery_status = 'Pending',
+        tags = ?,
         status_date = datetime('now')
     WHERE id = ?
-  `).run(order.id);
+  `).run(localTags, order.id);
 
   let fifoRestored = false;
   try {
@@ -672,6 +747,7 @@ async function cancelOrderBookingCore(orderId, actor = 'CancelBooking', options 
     cancelledTracking: order.tracking_number,
     courier: order.courier || '',
     shopifyFulfillmentCancelled,
+    shopifyTagRemoved,
     fifoRestored,
   };
 }

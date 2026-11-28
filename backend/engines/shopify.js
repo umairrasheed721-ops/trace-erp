@@ -11,7 +11,10 @@ const {
   fulfillShopifyOrder,
   updateShopifyAddress,
   registerShopifyWebhooks,
-  cancelShopifyFulfillment
+  cancelShopifyFulfillment,
+  READY_TO_BOOK_TAG,
+  mergeOrderTagString,
+  updateShopifyOrderTag
 } = require('./shopify/fulfillments');
 
 const {
@@ -31,6 +34,9 @@ module.exports = {
   fulfillShopifyOrder,
   updateShopifyAddress,
   cancelShopifyFulfillment,
+  READY_TO_BOOK_TAG,
+  mergeOrderTagString,
+  updateShopifyOrderTag,
   syncSpecificOrders,
   fetchVariantImagesGraphQL,
   mapShopifyStatus,

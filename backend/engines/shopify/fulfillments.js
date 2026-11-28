@@ -180,9 +180,77 @@ async function cancelShopifyFulfillment(store, shopifyOrderId) {
   }
 }
 
+const READY_TO_BOOK_TAG = 'Ready to Book';
+const TAG_API_TIMEOUT = 5000;
+
+function mergeOrderTagString(existingTags, tagName = READY_TO_BOOK_TAG, mode = 'add') {
+  const targetLower = String(tagName || '').trim().toLowerCase();
+  const list = String(existingTags || '')
+    .split(',')
+    .map(t => t.trim())
+    .filter(Boolean);
+
+  const filtered = list.filter(t => t.toLowerCase() !== targetLower);
+  if (mode === 'add' && targetLower) {
+    filtered.push(tagName);
+  }
+  const next = filtered.join(', ');
+  const prevNormalized = list.join(', ');
+  return { tags: next, changed: next.toLowerCase() !== prevNormalized.toLowerCase() };
+}
+
+async function updateShopifyOrderTag(store, shopifyOrderId, tagName = READY_TO_BOOK_TAG, mode = 'add') {
+  const { shop_domain, access_token } = store || {};
+  if (!shop_domain || !access_token || access_token === 'PENDING' || !shopifyOrderId) {
+    return { ok: false, skipped: true, error: 'Missing store token or shopify_order_id' };
+  }
+
+  try {
+    // 1. Fetch live tags first so we NEVER overwrite existing Shopify tags
+    const getUrl = `https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}.json?fields=id,tags`;
+    const getRes = await fetch(getUrl, {
+      headers: { 'X-Shopify-Access-Token': access_token },
+      timeout: TAG_API_TIMEOUT,
+    });
+    if (!getRes.ok) {
+      return { ok: false, error: `Shopify GET tags HTTP ${getRes.status}` };
+    }
+    const getData = await getRes.json();
+    const currentTags = getData?.order?.tags || '';
+    const { tags: nextTags, changed } = mergeOrderTagString(currentTags, tagName, mode);
+
+    if (!changed) {
+      return { ok: true, changed: false, tags: nextTags };
+    }
+
+    // 2. PUT merged tags back to Shopify
+    const putUrl = `https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}.json`;
+    const putRes = await fetch(putUrl, {
+      method: 'PUT',
+      headers: {
+        'X-Shopify-Access-Token': access_token,
+        'Content-Type': 'application/json',
+      },
+      timeout: TAG_API_TIMEOUT,
+      body: JSON.stringify({ order: { id: Number(shopifyOrderId) || shopifyOrderId, tags: nextTags } }),
+    });
+    if (!putRes.ok) {
+      const errText = await putRes.text().catch(() => '');
+      return { ok: false, error: `Shopify PUT tags HTTP ${putRes.status}: ${errText.slice(0, 120)}` };
+    }
+    return { ok: true, changed: true, tags: nextTags };
+  } catch (err) {
+    console.warn(`⚠️ [ShopifyTagSync] Failed (${mode} "${tagName}") on order ${shopifyOrderId}:`, err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
 module.exports = {
   registerShopifyWebhooks,
   fulfillShopifyOrder,
   updateShopifyAddress,
-  cancelShopifyFulfillment
+  cancelShopifyFulfillment,
+  READY_TO_BOOK_TAG,
+  mergeOrderTagString,
+  updateShopifyOrderTag,
 };

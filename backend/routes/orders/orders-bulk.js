@@ -4,21 +4,49 @@ const db = require('../../db');
 const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
 const { broadcast } = require('../../sse');
 
-// POST /api/orders/bulk-confirm - Bulk mark as ready for booking
-router.post('/bulk-confirm', (req, res) => {
+// POST /api/orders/bulk-confirm - Bulk mark as Confirmed + sync "Ready to Book" tag to Shopify (enforces Zero-Cost Guard)
+router.post('/bulk-confirm', async (req, res) => {
   const { ids } = req.body;
   if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
 
   try {
-    const stmt = db.prepare("UPDATE orders SET delivery_status = 'Confirmed', status_date = datetime('now') WHERE id = ?");
+    const { READY_TO_BOOK_TAG, mergeOrderTagString, updateShopifyOrderTag } = require('../../engines/shopify');
+    const stmt = db.prepare("UPDATE orders SET delivery_status = 'Confirmed', tags = ?, status_date = datetime('now') WHERE id = ?");
+    const updateTagOnly = db.prepare('UPDATE orders SET tags = ? WHERE id = ?');
+    let confirmedCount = 0;
+    let skippedZeroCost = 0;
+    let shopifySynced = 0;
+    const confirmedIds = [];
+
     for (const id of ids) {
-      const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(id);
-      stmt.run(id);
-      if (order) {
-        broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+      const order = db.prepare(`
+        SELECT o.id, o.store_id, o.shopify_order_id, o.cost, o.tags, s.shop_domain, s.access_token
+        FROM orders o LEFT JOIN stores s ON o.store_id = s.id
+        WHERE o.id = ?
+      `).get(id);
+      if (!order) continue;
+      if (!order.cost || Number(order.cost) <= 0) {
+        skippedZeroCost++;
+        continue;
       }
+
+      const { tags: localTags } = mergeOrderTagString(order.tags, READY_TO_BOOK_TAG, 'add');
+      stmt.run(localTags, id);
+      confirmedCount++;
+      confirmedIds.push(id);
+
+      if (order.shopify_order_id && order.shop_domain && order.access_token) {
+        const tagRes = await updateShopifyOrderTag(order, order.shopify_order_id, READY_TO_BOOK_TAG, 'add');
+        if (tagRes.ok) {
+          shopifySynced++;
+          if (tagRes.tags !== undefined) updateTagOnly.run(tagRes.tags, id);
+        }
+        await new Promise(r => setTimeout(r, 120));
+      }
+
+      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
     }
-    res.json({ success: true, count: ids.length });
+    res.json({ success: true, count: confirmedCount, skippedZeroCost, shopifySynced, confirmedIds });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -87,21 +115,47 @@ router.post('/bulk-update-status', (req, res) => {
   }
 });
 
-// POST /api/orders/bulk-revert - Bulk move back to Pending
-router.post('/bulk-revert', (req, res) => {
+// POST /api/orders/bulk-revert - Bulk move untracked orders back to Pending + remove "Ready to Book" tag on Shopify
+router.post('/bulk-revert', async (req, res) => {
   const { ids } = req.body;
   if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
 
   try {
-    const stmt = db.prepare("UPDATE orders SET delivery_status = 'Pending', status_date = datetime('now') WHERE id = ?");
+    const { READY_TO_BOOK_TAG, mergeOrderTagString, updateShopifyOrderTag } = require('../../engines/shopify');
+    const stmt = db.prepare("UPDATE orders SET delivery_status = 'Pending', tags = ?, status_date = datetime('now') WHERE id = ?");
+    const updateTagOnly = db.prepare('UPDATE orders SET tags = ? WHERE id = ?');
+    let count = 0;
+    let skippedTracked = 0;
+    let shopifySynced = 0;
+
     for (const id of ids) {
-      const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(id);
-      stmt.run(id);
-      if (order) {
-        broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+      const order = db.prepare(`
+        SELECT o.id, o.store_id, o.shopify_order_id, o.tracking_number, o.tags, s.shop_domain, s.access_token
+        FROM orders o LEFT JOIN stores s ON o.store_id = s.id
+        WHERE o.id = ?
+      `).get(id);
+      if (!order) continue;
+      if (order.tracking_number && String(order.tracking_number).trim() !== '') {
+        skippedTracked++;
+        continue;
       }
+
+      const { tags: localTags } = mergeOrderTagString(order.tags, READY_TO_BOOK_TAG, 'remove');
+      stmt.run(localTags, id);
+      count++;
+
+      if (order.shopify_order_id && order.shop_domain && order.access_token) {
+        const tagRes = await updateShopifyOrderTag(order, order.shopify_order_id, READY_TO_BOOK_TAG, 'remove');
+        if (tagRes.ok) {
+          shopifySynced++;
+          if (tagRes.tags !== undefined) updateTagOnly.run(tagRes.tags, id);
+        }
+        await new Promise(r => setTimeout(r, 120));
+      }
+
+      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
     }
-    res.json({ success: true, count: ids.length });
+    res.json({ success: true, count, skippedTracked, shopifySynced });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -118,10 +172,15 @@ router.post('/bulk-book-postex', async (req, res) => {
   for (const id of ids) {
     try {
       const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(id);
-      if (!order || (order.tracking_number && order.tracking_number.trim() !== '')) continue;
+      if (!order || (order.tracking_number && order.tracking_number.trim() !== '')) { failed++; continue; }
+      if (!order.cost || Number(order.cost) <= 0 || !order.city || order.city.trim() === '') { failed++; continue; }
 
       const matchedCity = getBestMatch(order.city, 'PostEx');
       if (matchedCity) order.city = matchedCity;
+      if (['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase())) {
+        order.price = 0;
+        order.is_prepaid = true;
+      }
 
       const trackingNumber = await createPostExOrder(order, order);
       db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, 'PostEx', id);
@@ -249,10 +308,15 @@ router.post('/bulk-book-instaworld', async (req, res) => {
   for (const id of ids) {
     try {
       const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.instaworld_key, s.instaworld_key_backup FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(id);
-      if (!order || (order.tracking_number && order.tracking_number.trim() !== '')) continue;
+      if (!order || (order.tracking_number && order.tracking_number.trim() !== '')) { failed++; continue; }
+      if (!order.cost || Number(order.cost) <= 0 || !order.city || order.city.trim() === '') { failed++; continue; }
 
       const matchedCity = getBestMatch(order.city, 'Instaworld');
       if (matchedCity) order.city = matchedCity;
+      if (['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase())) {
+        order.price = 0;
+        order.is_prepaid = true;
+      }
 
       const trackingNumber = await createInstaworldOrder(order, order, courier_name);
       db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, courier_name, id);

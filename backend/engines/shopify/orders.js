@@ -873,7 +873,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       newDeliveryStatus = mappedStatus;
     } else if (shopifyFulfillmentCancelled) {
       newDeliveryStatus = 'Pending';
-    } else if (order.fulfillment_status === 'fulfilled' && (newDeliveryStatus === 'Pending' || !newDeliveryStatus)) {
+    } else if (order.fulfillment_status === 'fulfilled' && ['pending', 'confirmed', ''].includes((newDeliveryStatus || '').toLowerCase())) {
       newDeliveryStatus = 'Booked';
     }
 
