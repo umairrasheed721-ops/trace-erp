@@ -225,10 +225,7 @@ export default function EditOrderModal({
     handleApplyStandardAddress,
     liveSubtotal,
     liveTotal,
-    totalOrderCost,
     zeroCostCount,
-    netProfit,
-    profitMargin,
     filteredGroups,
     addrScore
   } = management;
@@ -592,10 +589,7 @@ export default function EditOrderModal({
                   }
                 }}
                 liveTotal={liveTotal}
-                totalOrderCost={totalOrderCost}
                 zeroCostCount={zeroCostCount}
-                netProfit={netProfit}
-                profitMargin={profitMargin}
                 paymentStatus={editingOrder.payment_status}
                 localNotes={localNotes}
                 setLocalNotes={setLocalNotes}

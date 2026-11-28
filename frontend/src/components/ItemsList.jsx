@@ -89,7 +89,7 @@ function ParentProductCard({ g, localItems, setLocalItems, setShowProductSearch,
                       title: g.parent_title,
                       variant_title: sz.variant_title || `${sz.clean_size} / ${sz.clean_color}`,
                       quantity: 1,
-                      price: sellPrice || unitCost || 1000,
+                      price: sellPrice || 0,
                       image_url: sz.variant_image_url || sz.image_url || g.image_url
                     }
                   ]);
@@ -116,9 +116,11 @@ function ParentProductCard({ g, localItems, setLocalItems, setShowProductSearch,
                 <div style={{ fontSize: '0.69rem', color: isOutOfStock ? '#e11d48' : '#10b981', fontWeight: 700 }}>
                   {isOutOfStock ? '⚠️ Out of Stock' : `📦 Avail: ${stockQty}`}
                 </div>
-                <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>
-                  {sellPrice > 0 ? `Rs ${sellPrice.toLocaleString()} · ` : ''}Cost: Rs {unitCost.toLocaleString()}
-                </div>
+                {sellPrice > 0 && (
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 700 }}>
+                    Rs {sellPrice.toLocaleString()}
+                  </div>
+                )}
               </button>
             );
           })}
@@ -225,10 +227,6 @@ const ItemsList = React.memo(({
             const qty = parseInt(item.quantity, 10) || 1;
             const unitPrice = parseFloat(item.price) || 0;
             const itemRevenue = unitPrice * qty;
-            const itemCost = unitCost * qty;
-            const itemMargin = itemRevenue > 0 && unitCost > 0
-              ? Math.round(((itemRevenue - itemCost) / itemRevenue) * 100)
-              : null;
 
             const parentKey = String(matched?.parent_title || item.title || '').split(' - ')[0].trim().toLowerCase();
             const siblingVariants = variantsByParent[parentKey] || [];
@@ -297,22 +295,9 @@ const ItemsList = React.memo(({
                       </span>
                     )}
 
-                    {unitCost > 0 ? (
-                      <span style={{
-                        background: 'rgba(99,102,241,0.1)',
-                        color: '#6366f1',
-                        border: '1px solid rgba(99,102,241,0.25)',
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        fontSize: '0.7rem',
-                        fontWeight: 700
-                      }}>
-                        Cost: Rs {Math.round(unitCost).toLocaleString()}
-                        {itemMargin !== null ? ` · ${itemMargin}% margin` : ''}
-                      </span>
-                    ) : (
+                    {unitCost <= 0 && (
                       <span
-                        title="Missing product unit cost — booking will be blocked by Zero-Cost Guard"
+                        title="Item cost not set yet — ask Admin to update cost before booking"
                         style={{
                           background: 'rgba(239,68,68,0.13)',
                           color: '#dc2626',
@@ -323,7 +308,7 @@ const ItemsList = React.memo(({
                           fontWeight: 700
                         }}
                       >
-                        🛑 Zero Cost
+                        🛑 Cost Pending
                       </span>
                     )}
                   </div>

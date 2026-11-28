@@ -393,7 +393,7 @@ const CourierBooking = React.memo(({
                   background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
                   borderRadius: 9, padding: '7px 10px'
                 }}>
-                  🛑 Zero-Cost Guard active — heal missing SKU costs before booking.
+                  🛑 Item cost pending — contact Admin before booking.
                 </div>
               )}
 
