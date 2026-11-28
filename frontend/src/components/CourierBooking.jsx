@@ -1,35 +1,54 @@
 import React from 'react';
 import { useApp } from '@context/AppContext';
 
+const FINAL_LOCKED_STATUSES = ['delivered', 'returned', 'return received', 'cancelled'];
+
+function formatTrackingEventDate(raw) {
+  if (!raw) return '';
+  const str = String(raw).trim();
+  // Preserve DD/MM/YYYY format accurately (Rule 14)
+  const pkMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(.*)$/);
+  if (pkMatch) {
+    const [, dd, mm, yyyy, rest] = pkMatch;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const mName = months[parseInt(mm, 10) - 1] || mm;
+    return `${dd} ${mName} ${yyyy}${rest || ''}`;
+  }
+  return str;
+}
+
 const CourierBooking = React.memo(({
   courier,
   trackingNumber,
   trackingSlug,
   trackingLoading,
   trackingData,
+  liveHistory = [],
+  refreshLiveTracking,
   bookingCourier,
+  actionBusy,
   handleBookCourier,
+  handleCancelBooking,
+  zeroCostCount = 0,
   activeCouriers = [],
   updateOrderField,
   editingOrder,
-  setEditingOrder
+  setEditingOrder,
+  addToast
 }) => {
   const { activeStore } = useApp();
-  const standardCouriers = ['PostEx', 'Self Delivery', 'Unassigned'];
+  const standardCouriers = ['PostEx', 'Instaworld', 'Self Delivery', 'Unassigned'];
   const [localCourier, setLocalCourier] = React.useState('Unassigned');
   const [localTracking, setLocalTracking] = React.useState('');
   const [showCustomInput, setShowCustomInput] = React.useState(false);
   const [customCourier, setCustomCourier] = React.useState('');
   const [isSaving, setIsSaving] = React.useState(false);
 
-  // Merge standard options with dynamic options from activeCouriers
   const courierOptions = React.useMemo(() => {
     const list = [...standardCouriers];
     if (Array.isArray(activeCouriers)) {
       activeCouriers.forEach(c => {
-        if (c && !list.includes(c)) {
-          list.push(c);
-        }
+        if (c && !list.includes(c)) list.push(c);
       });
     }
     return list;
@@ -38,7 +57,7 @@ const CourierBooking = React.memo(({
   React.useEffect(() => {
     const currentCourier = courier || 'Unassigned';
     setLocalTracking(trackingNumber || '');
-    
+
     if (courierOptions.includes(currentCourier)) {
       setLocalCourier(currentCourier);
       setShowCustomInput(false);
@@ -57,11 +76,7 @@ const CourierBooking = React.memo(({
   const handleCourierChange = (e) => {
     const val = e.target.value;
     setLocalCourier(val);
-    if (val === 'custom') {
-      setShowCustomInput(true);
-    } else {
-      setShowCustomInput(false);
-    }
+    setShowCustomInput(val === 'custom');
   };
 
   const handleSaveManualCourier = async () => {
@@ -69,29 +84,28 @@ const CourierBooking = React.memo(({
     if (localCourier === 'custom') {
       finalCourier = customCourier.trim();
       if (!finalCourier) {
-        alert('Please enter a custom courier name.');
+        if (addToast) addToast('⚠️ Please enter a custom courier name.', 'warning');
         return;
       }
     }
-    
+
     setIsSaving(true);
     try {
       let updatedOrder = null;
       if (updateOrderField && editingOrder) {
         updatedOrder = await updateOrderField(editingOrder.id, {
           courier: finalCourier,
-          tracking_number: localTracking
+          tracking_number: localTracking.trim()
         });
       }
-      
       if (setEditingOrder) {
         if (updatedOrder) {
-          setEditingOrder(updatedOrder);
+          setEditingOrder(prev => ({ ...prev, ...updatedOrder, shop_domain: prev?.shop_domain }));
         } else {
           setEditingOrder(prev => ({
             ...prev,
             courier: finalCourier,
-            tracking_number: localTracking
+            tracking_number: localTracking.trim()
           }));
         }
       }
@@ -102,144 +116,366 @@ const CourierBooking = React.memo(({
     }
   };
 
+  const statusLower = String(editingOrder?.delivery_status || '').toLowerCase();
+  const canCancelBooking = Boolean(trackingNumber) && !FINAL_LOCKED_STATUSES.includes(statusLower);
+  const isPrepaid = ['paid', 'partially_paid'].includes(String(editingOrder?.payment_status || '').toLowerCase());
+  const hasRealSlug = Boolean(trackingSlug) && trackingSlug !== 'tr_mock_slug';
+
+  const courierPortalUrl = React.useMemo(() => {
+    if (!trackingNumber) return null;
+    const cLower = String(courier || '').toLowerCase();
+    if (cLower.includes('postex')) return `https://postex.pk/tracking?cn=${encodeURIComponent(trackingNumber)}`;
+    if (cLower.includes('insta') || cLower.includes('leopard') || cLower.includes('tcs') || cLower.includes('lcs')) {
+      return `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${encodeURIComponent(trackingNumber)}`;
+    }
+    return null;
+  }, [courier, trackingNumber]);
+
+  const copyTracking = () => {
+    if (!trackingNumber) return;
+    navigator.clipboard?.writeText(trackingNumber).then(() => {
+      if (addToast) addToast(`📋 Tracking ${trackingNumber} copied`, 'success');
+    }).catch(() => {});
+  };
+
+  const hasPostex = Boolean(activeStore?.postex_token);
+  const hasInsta1 = Boolean(activeStore?.instaworld_key);
+  const hasInsta2 = Boolean(activeStore?.instaworld_key_backup);
+  const hasInsta3 = Boolean(activeStore?.instaworld_key_3);
+  const hasAnyCourierConfigured = hasPostex || hasInsta1 || hasInsta2 || hasInsta3;
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 28 }}>
-      
-      {/* Left Side: Live Tracking Timeline */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: 12 }}>
-            <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff' }}>🚚 Live Courier Tracking Timeline</span>
-            <span style={{ fontSize: '0.75rem', color: '#818cf8', fontWeight: 700, background: '#6366f120', padding: '4px 12px', borderRadius: 20 }}>
-              {courier || 'Standard Courier'}
-            </span>
+    <div className="eom-grid-logistics">
+      {/* Left Side: Live Multi-Courier Tracking Timeline */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div className="eom-card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            borderBottom: '1px solid var(--border)', paddingBottom: 12, flexWrap: 'wrap', gap: 10
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontWeight: 800, fontSize: '0.94rem', color: 'var(--text-primary)' }}>🚚 Live Courier Tracking Timeline</span>
+              <span style={{
+                fontSize: '0.72rem', color: '#6366f1', fontWeight: 700,
+                background: 'rgba(99,102,241,0.12)', padding: '3px 10px', borderRadius: 999
+              }}>
+                {courier || 'Unassigned'}
+              </span>
+            </div>
+
+            {trackingNumber && refreshLiveTracking && (
+              <button
+                type="button"
+                disabled={trackingLoading}
+                onClick={() => refreshLiveTracking()}
+                style={{
+                  background: 'var(--bg-elevated)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-bright)',
+                  padding: '5px 11px',
+                  borderRadius: 9,
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                {trackingLoading ? '⏳ Refreshing...' : '🔄 Refresh Live'}
+              </button>
+            )}
           </div>
 
+          {editingOrder?.courier_status && (
+            <div style={{
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              padding: '9px 12px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '0.78rem'
+            }}>
+              <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Latest Courier Status</span>
+              <span style={{ color: '#6366f1', fontWeight: 800 }}>{editingOrder.courier_status}</span>
+            </div>
+          )}
+
           {trackingLoading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading live courier milestones...</div>
+            <div style={{ padding: 36, textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              ⏳ Fetching live courier checkpoints...
+            </div>
+          ) : liveHistory.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 6 }}>
+              {liveHistory.map((ev, idx) => {
+                const title = ev.transactionStatusMessage || ev.transactionStatus || ev.status || ev.activity || 'Courier Update';
+                const ts = formatTrackingEventDate(ev.transactionStatusDate || ev.dateTime || ev.date || ev.timestamp || '');
+                const loc = ev.location || ev.city || ev.station || '';
+                const remarks = ev.remarks || ev.reason || ev.detail || '';
+                const isLatest = idx === 0;
+                const isIssue = /fail|return|refus|cancel|unattempt|hold/i.test(title);
+
+                return (
+                  <div key={`${ts}-${idx}`} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                    <div style={{
+                      width: 24, height: 24, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+                      background: isIssue ? 'rgba(239,68,68,0.15)' : isLatest ? 'rgba(99,102,241,0.16)' : 'var(--bg-elevated)',
+                      border: `2px solid ${isIssue ? '#ef4444' : isLatest ? '#6366f1' : 'var(--border-bright)'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem',
+                      color: isIssue ? '#ef4444' : isLatest ? '#6366f1' : 'var(--text-muted)'
+                    }}>
+                      {isIssue ? '!' : isLatest ? '●' : '✓'}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: isLatest ? 800 : 700, color: isIssue ? '#e11d48' : 'var(--text-primary)' }}>
+                          {title}
+                        </span>
+                        {ts && (
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{ts}</span>
+                        )}
+                      </div>
+                      {(loc || remarks) && (
+                        <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                          {[loc, remarks].filter(Boolean).join(' — ')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : trackingData?.milestones ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingLeft: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingLeft: 6 }}>
               {trackingData.milestones.map((m, idx) => (
-                <div key={m.status || idx} style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: m.done ? (m.isError ? '#4c0519' : '#1e1b4b') : '#0f172a', border: `2px solid ${m.done ? (m.isError ? '#f43f5e' : '#6366f1') : '#334155'}`, display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', fontSize: '0.8rem', flexShrink: 0 }}>
+                <div key={m.status || idx} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+                    background: m.done ? (m.isError ? 'rgba(239,68,68,0.15)' : 'rgba(99,102,241,0.15)') : 'var(--bg-elevated)',
+                    border: `2px solid ${m.done ? (m.isError ? '#ef4444' : '#6366f1') : 'var(--border-bright)'}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem'
+                  }}>
                     {m.done ? (m.isError ? '⚠️' : '✓') : ''}
                   </div>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: m.done ? (m.isError ? '#f43f5e' : '#fff') : '#64748b' }}>{m.label}</h4>
-                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{m.date}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <h4 style={{ margin: 0, fontSize: '0.86rem', fontWeight: 700, color: m.done ? (m.isError ? '#e11d48' : 'var(--text-primary)') : 'var(--text-muted)' }}>
+                        {m.label}
+                      </h4>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{m.date}</span>
                     </div>
-                    <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
-                      {m.status === 'Booked' && `Tracking #: ${trackingNumber || 'Pending'}`}
-                      {m.status === 'In Transit' && 'Package is moving through courier logistics network.'}
-                      {m.status === 'Out for Delivery' && 'Rider is out for delivery. Keep phone available.'}
-                      {m.status === 'Attempted' && 'Attempt failed.'}
-                      {m.status === 'Delivered' && 'Shipment delivered successfully.'}
-                    </p>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
-              <p style={{ margin: 0, fontSize: '0.9rem' }}>No tracking timeline available. Book courier to generate milestones.</p>
+            <div style={{ padding: 36, textAlign: 'center', color: 'var(--text-muted)' }}>
+              <p style={{ margin: 0, fontSize: '0.86rem' }}>
+                {trackingNumber
+                  ? 'No checkpoints synced yet. Click "Refresh Live" to pull courier scans.'
+                  : 'Order is not booked yet. Book a courier on the right to generate tracking & milestones.'}
+              </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Right Side: Booking & Assignment Controls */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {/* Instant Booking Panel */}
-        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12 }}>🚀 Instant Courier Booking</div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Assign & Generate Tracking Number</label>
-            <button 
-              type="button"
-              onClick={() => handleBookCourier('PostEx')} 
-              disabled={bookingCourier}
-              style={{ background: '#0f172a', color: '#fff', border: '1px solid #6366f1', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
-            >
-              <span>🚀 Book with PostEx</span>
-              <span style={{ fontSize: '0.75rem', color: '#818cf8' }}>API Active</span>
-            </button>
-            {activeStore?.instaworld_key && (
-              <button 
-                type="button"
-                onClick={() => handleBookCourier('insta:primary')} 
-                disabled={bookingCourier}
-                style={{ background: '#0f172a', color: '#fff', border: '1px solid #10b981', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
-              >
-                <span>🚀 Book Instaworld (API 1: {activeStore.instaworld_key.substring(0, 4)}...)</span>
-                <span style={{ fontSize: '0.75rem', color: '#34d399' }}>API Active</span>
-              </button>
-            )}
-            {activeStore?.instaworld_key_backup && (
-              <button 
-                type="button"
-                onClick={() => handleBookCourier('insta:backup')} 
-                disabled={bookingCourier}
-                style={{ background: '#0f172a', color: '#fff', border: '1px solid #3b82f6', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
-              >
-                <span>🚀 Book Instaworld (API 2: {activeStore.instaworld_key_backup.substring(0, 4)}...)</span>
-                <span style={{ fontSize: '0.75rem', color: '#60a5fa' }}>API Active</span>
-              </button>
-            )}
-            {activeStore?.instaworld_key_3 && (
-              <button 
-                type="button"
-                onClick={() => handleBookCourier('insta:key3')} 
-                disabled={bookingCourier}
-                style={{ background: '#0f172a', color: '#fff', border: '1px solid #eab308', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
-              >
-                <span>🚀 Book Instaworld (API 3: {activeStore.instaworld_key_3.substring(0, 4)}...)</span>
-                <span style={{ fontSize: '0.75rem', color: '#facc15' }}>API Active</span>
-              </button>
-            )}
+      {/* Right Side: Instant Booking & Manual Assignment Controls */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div className="eom-card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+            🚀 Courier Booking & Tracking
           </div>
 
-          {trackingNumber && (
-            <div style={{ borderTop: '1px solid #334155', paddingTop: 16, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Assigned Tracking Number:</div>
-              <div style={{ background: '#0f172a', border: '1px solid #334155', padding: '10px 14px', borderRadius: 12, fontSize: '1rem', fontMono: 'true', fontWeight: 800, color: '#6366f1', textAlign: 'center' }}>
-                {trackingNumber}
+          {trackingNumber ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                Active Tracking Number
               </div>
-              <a 
-                href={`/track/${trackingSlug || 'tr_mock_slug'}`} 
-                target="_blank" 
-                rel="noreferrer"
-                style={{ background: '#6366f1', color: '#fff', padding: '10px 16px', borderRadius: 12, fontSize: '0.8rem', fontWeight: 700, textDecoration: 'none', textAlign: 'center', display: 'block', boxShadow: '0 4px 12px rgba(99,102,241,0.3)' }}
+              <button
+                type="button"
+                onClick={copyTracking}
+                title="Click to copy tracking number"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-bright)',
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  fontSize: '0.98rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 800,
+                  color: '#6366f1',
+                  textAlign: 'center',
+                  cursor: 'pointer'
+                }}
               >
-                🌐 Open Public Tracking Portal
-              </a>
+                {trackingNumber} 📋
+              </button>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {courierPortalUrl && (
+                  <a
+                    href={courierPortalUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      flex: 1,
+                      background: '#6366f1',
+                      color: '#fff',
+                      padding: '9px 12px',
+                      borderRadius: 10,
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      textAlign: 'center'
+                    }}
+                  >
+                    🔎 Track on {courier || 'Courier'} ↗
+                  </a>
+                )}
+                {hasRealSlug && (
+                  <a
+                    href={`/track/${trackingSlug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      flex: 1,
+                      background: 'var(--bg-elevated)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-bright)',
+                      padding: '9px 12px',
+                      borderRadius: 10,
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      textAlign: 'center'
+                    }}
+                  >
+                    🌐 Public Portal ↗
+                  </a>
+                )}
+              </div>
+
+              {canCancelBooking && handleCancelBooking && (
+                <button
+                  type="button"
+                  onClick={handleCancelBooking}
+                  disabled={actionBusy}
+                  style={{
+                    marginTop: 4,
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    color: '#dc2626',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    padding: '10px 14px',
+                    borderRadius: 10,
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {actionBusy ? '⏳ Cancelling...' : '🛑 Cancel Courier Booking'}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {isPrepaid && (
+                <div style={{
+                  fontSize: '0.74rem', fontWeight: 700, color: '#059669',
+                  background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)',
+                  borderRadius: 9, padding: '7px 10px'
+                }}>
+                  💳 Prepaid Order — Courier COD amount will automatically be sent as Rs. 0.
+                </div>
+              )}
+              {zeroCostCount > 0 && (
+                <div style={{
+                  fontSize: '0.74rem', fontWeight: 700, color: '#dc2626',
+                  background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+                  borderRadius: 9, padding: '7px 10px'
+                }}>
+                  🛑 Zero-Cost Guard active — heal missing SKU costs before booking.
+                </div>
+              )}
+
+              <label className="eom-label" style={{ marginBottom: 0 }}>Assign & Generate Tracking Number</label>
+
+              {(hasPostex || !hasAnyCourierConfigured) && (
+                <button
+                  type="button"
+                  onClick={() => handleBookCourier('PostEx')}
+                  disabled={bookingCourier}
+                  style={{
+                    background: 'var(--bg-elevated)', color: 'var(--text-primary)',
+                    border: '1px solid #6366f1', padding: '11px 14px', borderRadius: 11,
+                    fontSize: '0.83rem', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                  }}
+                >
+                  <span>{bookingCourier ? '⏳ Booking...' : '🚀 Book with PostEx'}</span>
+                  <span style={{ fontSize: '0.72rem', color: '#6366f1' }}>{hasPostex ? 'API Ready' : 'Not Configured'}</span>
+                </button>
+              )}
+              {hasInsta1 && (
+                <button
+                  type="button"
+                  onClick={() => handleBookCourier('insta:primary')}
+                  disabled={bookingCourier}
+                  style={{
+                    background: 'var(--bg-elevated)', color: 'var(--text-primary)',
+                    border: '1px solid #10b981', padding: '11px 14px', borderRadius: 11,
+                    fontSize: '0.83rem', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                  }}
+                >
+                  <span>🚀 Instaworld API 1 ({activeStore.instaworld_key.substring(0, 4)}...)</span>
+                  <span style={{ fontSize: '0.72rem', color: '#10b981' }}>API Ready</span>
+                </button>
+              )}
+              {hasInsta2 && (
+                <button
+                  type="button"
+                  onClick={() => handleBookCourier('insta:backup')}
+                  disabled={bookingCourier}
+                  style={{
+                    background: 'var(--bg-elevated)', color: 'var(--text-primary)',
+                    border: '1px solid #3b82f6', padding: '11px 14px', borderRadius: 11,
+                    fontSize: '0.83rem', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                  }}
+                >
+                  <span>🚀 Instaworld API 2 ({activeStore.instaworld_key_backup.substring(0, 4)}...)</span>
+                  <span style={{ fontSize: '0.72rem', color: '#3b82f6' }}>API Ready</span>
+                </button>
+              )}
+              {hasInsta3 && (
+                <button
+                  type="button"
+                  onClick={() => handleBookCourier('insta:key3')}
+                  disabled={bookingCourier}
+                  style={{
+                    background: 'var(--bg-elevated)', color: 'var(--text-primary)',
+                    border: '1px solid #eab308', padding: '11px 14px', borderRadius: 11,
+                    fontSize: '0.83rem', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                  }}
+                >
+                  <span>🚀 Instaworld API 3 ({activeStore.instaworld_key_3.substring(0, 4)}...)</span>
+                  <span style={{ fontSize: '0.72rem', color: '#ca8a04' }}>API Ready</span>
+                </button>
+              )}
             </div>
           )}
         </div>
 
-        {/* Manual Assignment Panel */}
-        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12 }}>⚙️ Manual Courier Assignment</div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Courier Partner</label>
-            <select
-              value={localCourier}
-              onChange={handleCourierChange}
-              style={{
-                width: '100%',
-                background: '#0f172a',
-                color: '#fff',
-                border: '1px solid #334155',
-                padding: '12px 16px',
-                borderRadius: 12,
-                fontSize: '0.85rem',
-                outline: 'none',
-                cursor: 'pointer',
-                boxSizing: 'border-box'
-              }}
-            >
+        {/* Manual Courier Assignment */}
+        <div className="eom-card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+            ⚙️ Manual Courier Assignment
+          </div>
+
+          <div>
+            <label className="eom-label">Courier Partner</label>
+            <select value={localCourier} onChange={handleCourierChange} className="eom-select">
               {courierOptions.map(opt => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
@@ -248,46 +484,27 @@ const CourierBooking = React.memo(({
           </div>
 
           {showCustomInput && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Custom Courier Name</label>
+            <div>
+              <label className="eom-label">Custom Courier Name</label>
               <input
                 type="text"
-                placeholder="e.g. Trax, M&P, Barq Raftar"
+                placeholder="e.g. Trax, M&P, TCS"
                 value={customCourier}
                 onChange={(e) => setCustomCourier(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: '#0f172a',
-                  color: '#fff',
-                  border: '1px solid #334155',
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  fontSize: '0.85rem',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
+                className="eom-input"
               />
             </div>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Tracking Number</label>
+          <div>
+            <label className="eom-label">Tracking Number</label>
             <input
               type="text"
               placeholder="Enter tracking number"
               value={localTracking}
               onChange={(e) => setLocalTracking(e.target.value)}
-              style={{
-                width: '100%',
-                background: '#0f172a',
-                color: '#fff',
-                border: '1px solid #334155',
-                padding: '12px 16px',
-                borderRadius: 12,
-                fontSize: '0.85rem',
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
+              className="eom-input"
+              style={{ fontFamily: 'monospace' }}
             />
           </div>
 
@@ -299,15 +516,12 @@ const CourierBooking = React.memo(({
               background: '#6366f1',
               color: '#fff',
               border: 'none',
-              padding: '12px 16px',
-              borderRadius: 12,
-              fontSize: '0.85rem',
+              padding: '10px 14px',
+              borderRadius: 10,
+              fontSize: '0.83rem',
               fontWeight: 700,
               cursor: 'pointer',
-              textAlign: 'center',
-              marginTop: 8,
-              boxShadow: '0 4px 12px rgba(99,102,241,0.3)',
-              transition: 'all 0.2s ease'
+              marginTop: 4
             }}
           >
             {isSaving ? '⏳ Saving details...' : '💾 Save Courier Details'}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import useOrderManagement from '@hooks/useOrderManagement';
 import OrderHeader from '@components/OrderHeader';
 import ItemsList from '@components/ItemsList';
@@ -6,6 +6,164 @@ import PaymentSummary from '@components/PaymentSummary';
 import CourierBooking from '@components/CourierBooking';
 import { useApp } from '@context/AppContext';
 import AddressVerificationPanel from '@components/EditOrderModal/AddressVerificationPanel';
+
+const FINAL_LOCKED_STATUSES = ['delivered', 'returned', 'return received', 'cancelled'];
+
+function normalizeSize(str) {
+  if (!str) return null;
+  const norm = String(str).trim().toUpperCase();
+  const sizes = ['6XL', '5XL', '4XL', '3XL', '2XL', 'XXL', 'XL', 'L', 'M', 'S', 'XS'];
+  for (const size of sizes) {
+    const regex = new RegExp(`(?:\\b|[-/_()\\s])${size}(?:\\b|[-/_()\\s])`, 'i');
+    if (regex.test(norm)) {
+      return size === 'XXL' ? '2XL' : size;
+    }
+  }
+  const numMatch = norm.match(/\b(30|32|34|36|38|40|42|44|46)\b/);
+  if (numMatch) return numMatch[1];
+  return null;
+}
+
+function extractSizeFromOrder(order) {
+  if (!order) return 'M';
+  if (order.size_preference) return order.size_preference;
+
+  let lineItems = [];
+  try {
+    lineItems = typeof order.line_items === 'string' ? JSON.parse(order.line_items) : (order.line_items || []);
+  } catch (_) {}
+
+  for (const item of lineItems) {
+    const vt = String(item.variant_title || '').trim().toUpperCase();
+    if (vt && vt !== 'DEFAULT TITLE') {
+      const sizeMatch = normalizeSize(vt);
+      if (sizeMatch) return sizeMatch;
+    }
+    const sizeMatch = normalizeSize(item.title) || normalizeSize(item.sku);
+    if (sizeMatch) return sizeMatch;
+  }
+  return 'M';
+}
+
+function escapeHtml(val) {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function openPackingSlipPrint({ order, items, subtotal, discount, shippingFee, total, storeName }) {
+  const win = window.open('', '_blank', 'width=720,height=880');
+  if (!win) return false;
+  const ref = order.ref_number || `#${order.shopify_order_id || order.id}`;
+  const isPrepaid = ['paid', 'partially_paid'].includes(String(order.payment_status || '').toLowerCase());
+  const codAmount = isPrepaid ? 0 : total;
+  const totalQty = items.reduce((s, i) => s + (parseInt(i.quantity, 10) || 1), 0);
+
+  const rowsHtml = items.map((it, idx) => `
+    <tr>
+      <td>${idx + 1}</td>
+      <td>
+        <strong>${escapeHtml(it.title)}</strong>
+        ${it.variant_title ? `<div class="muted">${escapeHtml(it.variant_title)}</div>` : ''}
+      </td>
+      <td class="mono">${escapeHtml(it.sku || '—')}</td>
+      <td class="num">${parseInt(it.quantity, 10) || 1}</td>
+      <td class="num">Rs ${Math.round((parseFloat(it.price) || 0) * (parseInt(it.quantity, 10) || 1)).toLocaleString()}</td>
+    </tr>
+  `).join('');
+
+  win.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Packing Slip - ${escapeHtml(ref)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 24px; color: #0f172a; }
+    .slip { max-width: 640px; margin: 0 auto; border: 2px solid #0f172a; border-radius: 10px; padding: 20px; }
+    .top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 14px; }
+    .brand { font-size: 18px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+    .order-id { font-size: 20px; font-weight: 800; font-family: monospace; }
+    .meta { font-size: 12px; color: #475569; margin-top: 3px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+    .box { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.45; }
+    .box-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin-bottom: 4px; }
+    .cod-box { background: #f8fafc; border: 2px solid #0f172a; text-align: center; }
+    .cod-val { font-size: 22px; font-weight: 900; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 13px; }
+    th, td { border-bottom: 1px solid #cbd5e1; padding: 8px 6px; text-align: left; }
+    th { font-size: 11px; text-transform: uppercase; color: #475569; background: #f1f5f9; }
+    .num { text-align: right; font-weight: 700; }
+    .mono { font-family: monospace; font-size: 12px; }
+    .muted { font-size: 11px; color: #64748b; }
+    .totals { display: flex; justify-content: flex-end; }
+    .totals table { width: 260px; margin-bottom: 0; }
+    .totals td { border: none; padding: 4px 6px; }
+    .totals .grand td { border-top: 2px solid #0f172a; padding-top: 8px; font-weight: 900; font-size: 15px; }
+    .note { margin-top: 12px; padding: 8px 10px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; font-size: 12px; }
+    @media print { body { padding: 0; } .slip { border-width: 1px; } }
+  </style>
+</head>
+<body>
+  <div class="slip">
+    <div class="top">
+      <div>
+        <div class="brand">${escapeHtml(storeName || 'TRACE ERP')}</div>
+        <div class="meta">Packing Slip · Printed ${new Date().toLocaleString()}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="order-id">${escapeHtml(ref)}</div>
+        ${order.tracking_number ? `<div class="meta mono">${escapeHtml(order.courier || 'Courier')}: ${escapeHtml(order.tracking_number)}</div>` : ''}
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="box">
+        <div class="box-label">Ship To</div>
+        <div><strong>${escapeHtml(order.customer_name || 'Customer')}</strong></div>
+        <div>📞 ${escapeHtml(order.phone || '—')}</div>
+        <div>${escapeHtml(order.address || '—')}</div>
+        <div><strong>${escapeHtml(order.city || '—')}</strong></div>
+      </div>
+      <div class="box cod-box">
+        <div class="box-label">${isPrepaid ? 'Payment Status' : 'COD Amount to Collect'}</div>
+        <div class="cod-val">${isPrepaid ? 'PREPAID (Rs 0)' : `Rs ${Math.round(codAmount).toLocaleString()}`}</div>
+        <div class="meta" style="margin-top:6px;">Items: ${totalQty} unit${totalQty === 1 ? '' : 's'}</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:28px">#</th>
+          <th>Product / Variant</th>
+          <th>SKU</th>
+          <th class="num">Qty</th>
+          <th class="num">Amount</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+
+    <div class="totals">
+      <table>
+        <tr><td>Subtotal</td><td class="num">Rs ${Math.round(subtotal).toLocaleString()}</td></tr>
+        ${Number(discount) > 0 ? `<tr><td>Discount</td><td class="num">-Rs ${Math.round(discount).toLocaleString()}</td></tr>` : ''}
+        ${Number(shippingFee) > 0 ? `<tr><td>Shipping</td><td class="num">Rs ${Math.round(shippingFee).toLocaleString()}</td></tr>` : ''}
+        <tr class="grand"><td>Total</td><td class="num">Rs ${Math.round(total).toLocaleString()}</td></tr>
+      </table>
+    </div>
+
+    ${order.notes ? `<div class="note"><strong>Customer Note:</strong> ${escapeHtml(order.notes)}</div>` : ''}
+  </div>
+  <script>window.onload = function () { window.focus(); window.print(); };</script>
+</body>
+</html>`);
+  win.document.close();
+  return true;
+}
 
 export default function EditOrderModal({
   editingOrder,
@@ -16,16 +174,18 @@ export default function EditOrderModal({
   isCityValid,
   onLocalOrderUpdate
 }) {
+  const { addToast, activeStore } = useApp();
+
   const management = useOrderManagement({
     editingOrder,
     setEditingOrder,
     fetchOrderDetails,
     updateOrderField,
-    onLocalOrderUpdate
+    onLocalOrderUpdate,
+    addToast
   });
 
   const {
-    getMediaUrlWithToken,
     activeTab,
     setActiveTab,
     localItems,
@@ -37,63 +197,27 @@ export default function EditOrderModal({
     localNotes,
     setLocalNotes,
     isSavingCS,
+    isDirty,
     custIntel,
     custIntelLoading,
-    waSimulating,
-    sendingImages,
     masterProducts,
     showProductSearch,
     setShowProductSearch,
     productSearchQuery,
     setProductSearchQuery,
     bookingCourier,
+    actionBusy,
     trackingData,
+    liveHistory,
     trackingLoading,
-    chatMessages,
-    chatLoading,
-    botStatus,
-    newWaMsg,
-    setNewWaMsg,
-    sendingWaMsg,
-    isTyping,
-    fileInputRef,
-    quickReplies,
-    showQuickReplyPanel,
-    setShowQuickReplyPanel,
-    quickReplyTitle,
-    setQuickReplyTitle,
-    quickReplyCaption,
-    setQuickReplyCaption,
-    quickReplyMedia,
-    setQuickReplyMedia,
-    showTemplateCreator,
-    setShowTemplateCreator,
-    isUploadingMedia,
-    quickPills,
-    showPillsManager,
-    setShowPillsManager,
-    newPillText,
-    setNewPillText,
-    isRecording,
-    recordingSeconds,
-    chatSearchQuery,
-    setChatSearchQuery,
-    sendingInvoice,
-    handleCreateQuickPill,
-    handleDeleteQuickPill,
-    startRecording,
-    stopRecording,
-    handleSendInvoice,
-    handleSendQuickReply,
-    handleCreateQuickReply,
-    handleDeleteQuickReply,
-    handleSendWaMessage,
-    handleFileAttach,
+    refreshLiveTracking,
     handleCSUpdate,
-    handleWaSimulate,
-    handleSendItemImages,
     handleAddressCleanse,
     handleBookCourier,
+    handleConfirmOrder,
+    handleRevertConfirm,
+    handleCancelBooking,
+    handleCancelOrder,
     mapsVerifyLoading,
     mapsVerifyResult,
     setMapsVerifyResult,
@@ -102,64 +226,17 @@ export default function EditOrderModal({
     liveSubtotal,
     liveTotal,
     totalOrderCost,
+    zeroCostCount,
     netProfit,
     profitMargin,
     filteredGroups,
     addrScore
   } = management;
 
-  const { addToast } = useApp();
   const [waTemplates, setWATemplates] = useState([]);
   const [activeCouriers, setActiveCouriers] = useState([]);
-
   const [selectedSize, setSelectedSize] = useState('M');
-
-  const normalizeSize = (str) => {
-    if (!str) return null;
-    const norm = str.trim().toUpperCase();
-    const sizes = ['6XL', '5XL', '4XL', '3XL', '2XL', 'XXL', 'XL', 'L', 'M', 'S', 'XS'];
-    for (const size of sizes) {
-      const regex = new RegExp(`(?:\\b|[-/_()\\\\s])${size}(?:\\b|[-/_()\\\\s])`, 'i');
-      if (regex.test(norm)) {
-        return size === 'XXL' ? '2XL' : size;
-      }
-    }
-    const numMatch = norm.match(/\\b(30|32|34|36|38|40|42|44|46)\\b/);
-    if (numMatch) return numMatch[1];
-    return null;
-  };
-
-  const extractSizeFromOrder = (order) => {
-    if (!order) return 'M';
-    if (order.size_preference) return order.size_preference;
-
-    let lineItems = [];
-    try {
-      lineItems = typeof order.line_items === 'string' ? JSON.parse(order.line_items) : (order.line_items || []);
-    } catch (e) {}
-
-    for (const item of lineItems) {
-      const vt = String(item.variant_title || '').trim().toUpperCase();
-      if (vt && vt !== 'DEFAULT TITLE') {
-        const sizeMatch = normalizeSize(vt);
-        if (sizeMatch) return sizeMatch;
-      }
-      
-      const title = String(item.title || '').trim().toUpperCase();
-      const sku = String(item.sku || '').trim().toUpperCase();
-      
-      const sizeMatch = normalizeSize(title) || normalizeSize(sku);
-      if (sizeMatch) return sizeMatch;
-    }
-    return 'M';
-  };
-
-  useEffect(() => {
-    if (editingOrder) {
-      const extracted = extractSizeFromOrder(editingOrder);
-      setSelectedSize(extracted);
-    }
-  }, [editingOrder]);
+  const [showBookMenu, setShowBookMenu] = useState(false);
 
   const [sendingCatalog, setSendingCatalog] = useState(false);
   const [catalogVariants, setCatalogVariants] = useState([]);
@@ -169,62 +246,119 @@ export default function EditOrderModal({
   const [includeContinueSelling, setIncludeContinueSelling] = useState(true);
   const [batchIndex, setBatchIndex] = useState(0);
 
-  // Auto-select the active batch whenever catalog or page changes
+  const orderId = editingOrder?.id || null;
+  const orderStoreId = editingOrder?.store_id || 1;
+
+  // Extract default catalog size ONLY when opening a different order
   useEffect(() => {
-    if (catalogVariants.length === 0) return;
+    if (orderId) {
+      setSelectedSize(extractSizeFromOrder(editingOrder));
+      setShowBookMenu(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId]);
+
+  // Auto-select active batch when catalog or page changes
+  useEffect(() => {
+    if (catalogVariants.length === 0) {
+      setSelectedCatalogVariants(new Set());
+      return;
+    }
     const startIndex = batchIndex * 30;
-    const endIndex = startIndex + 30;
-    const currentBatch = catalogVariants.slice(startIndex, endIndex);
-    const initialSelected = new Set(currentBatch.map(v => v.shopify_variant_id));
-    setSelectedCatalogVariants(initialSelected);
+    const currentBatch = catalogVariants.slice(startIndex, startIndex + 30);
+    setSelectedCatalogVariants(new Set(currentBatch.map(v => v.shopify_variant_id)));
   }, [batchIndex, catalogVariants]);
 
-  const fetchCatalogVariants = async (size, includeContinue) => {
-    if (!editingOrder || !size) return;
+  // Fetch catalog variants ONLY when Customer tab is open OR size/filter/orderId changes (Rule 9: zero idle/keystroke spam!)
+  useEffect(() => {
+    if (!orderId || activeTab !== 'customer' || !selectedSize) return;
+    let cancelled = false;
     setLoadingCatalog(true);
     setCatalogError('');
-    setBatchIndex(0); // Reset page index on reload
-    try {
-      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
-      const storeId = editingOrder.store_id || 1;
-      const res = await fetch(`/api/whatsapp/in-stock-images?size=${encodeURIComponent(size)}&include_continue_selling=${includeContinue ? 'true' : 'false'}&store_id=${storeId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      
-      if (res.ok && data.success) {
-        const list = data.variants || [];
-        setCatalogVariants(list);
+    setBatchIndex(0);
 
-        if (list.length > 0) {
-          const imageUrls = list.map(v => v.image_url).filter(Boolean);
-          const useLocalHelper = localStorage.getItem('trace_use_local_helper') === 'true';
-          if (useLocalHelper && imageUrls.length > 0) {
-            fetch('http://127.0.0.1:9099/pre-fetch-images', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ imageUrls })
-            }).catch(err => console.debug('Local helper background pre-fetch failed/inactive:', err.message));
+    const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+    fetch(`/api/whatsapp/in-stock-images?size=${encodeURIComponent(selectedSize)}&include_continue_selling=${includeContinueSelling ? 'true' : 'false'}&store_id=${orderStoreId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+      .then(async res => ({ ok: res.ok, status: res.status, data: await res.json() }))
+      .then(({ ok, status, data }) => {
+        if (cancelled) return;
+        if (ok && data.success) {
+          const list = data.variants || [];
+          setCatalogVariants(list);
+          if (list.length > 0 && localStorage.getItem('trace_use_local_helper') === 'true') {
+            const imageUrls = list.map(v => v.image_url).filter(Boolean);
+            if (imageUrls.length > 0) {
+              fetch('http://127.0.0.1:9099/pre-fetch-images', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imageUrls })
+              }).catch(() => {});
+            }
           }
+        } else {
+          setCatalogVariants([]);
+          setCatalogError(data.error || `Catalog request failed (HTTP ${status})`);
         }
-      } else {
-        setCatalogVariants([]);
-        setCatalogError(data.error || `Catalog request failed (HTTP ${res.status})`);
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setCatalogVariants([]);
+          setCatalogError(err.message || 'Catalog request failed');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCatalog(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [orderId, orderStoreId, activeTab, selectedSize, includeContinueSelling]);
+
+  // Fetch WA templates & active couriers ONCE when opening modal (strictly keyed on orderId, NOT editingOrder!)
+  useEffect(() => {
+    if (!orderId) return;
+    const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+    fetch('/api/whatsapp/templates', { headers })
+      .then(res => res.json())
+      .then(data => { if (Array.isArray(data)) setWATemplates(data); })
+      .catch(() => {});
+
+    fetch('/api/logistics/couriers', { headers })
+      .then(res => res.json())
+      .then(data => { if (Array.isArray(data)) setActiveCouriers(data); })
+      .catch(() => {});
+  }, [orderId]);
+
+  const requestClose = useCallback(() => {
+    if (isDirty) {
+      if (!window.confirm('You have unsaved line item / financial changes. Discard and close?')) {
+        return;
       }
-    } catch (err) {
-      console.error('Error fetching catalog variants:', err);
-      setCatalogVariants([]);
-      setCatalogError(err.message || 'Catalog request failed');
-    } finally {
-      setLoadingCatalog(false);
     }
-  };
+    setShowBookMenu(false);
+    setEditingOrder(null);
+  }, [isDirty, setEditingOrder]);
 
   useEffect(() => {
-    if (editingOrder && selectedSize) {
-      fetchCatalogVariants(selectedSize, includeContinueSelling);
-    }
-  }, [selectedSize, includeContinueSelling, editingOrder]);
+    if (!orderId) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showProductSearch) return;
+        if (showBookMenu) {
+          setShowBookMenu(false);
+          return;
+        }
+        requestClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [orderId, showProductSearch, showBookMenu, requestClose]);
+
+  if (!editingOrder) return null;
 
   const toggleVariantSelection = (variantId) => {
     const next = new Set(selectedCatalogVariants);
@@ -232,7 +366,7 @@ export default function EditOrderModal({
       next.delete(variantId);
     } else {
       if (next.size >= 30) {
-        addToast('⚠️ Cannot select more than 30 images to respect WhatsApp anti-spam policies.', 'warning');
+        addToast('⚠️ Max 30 images per WhatsApp dispatch.', 'warning');
         return;
       }
       next.add(variantId);
@@ -241,69 +375,43 @@ export default function EditOrderModal({
   };
 
   const handleSelectAllToggle = () => {
-    const totalVariants = catalogVariants.length;
-    if (totalVariants === 0) return;
-    
+    if (catalogVariants.length === 0) return;
     const startIndex = batchIndex * 30;
-    const endIndex = startIndex + 30;
-    const currentBatch = catalogVariants.slice(startIndex, endIndex);
-    if (currentBatch.length === 0) return;
-
+    const currentBatch = catalogVariants.slice(startIndex, startIndex + 30);
     const allSelected = currentBatch.every(v => selectedCatalogVariants.has(v.shopify_variant_id));
     const next = new Set(selectedCatalogVariants);
-
-    if (allSelected) {
-      currentBatch.forEach(v => next.delete(v.shopify_variant_id));
-    } else {
-      currentBatch.forEach(v => next.add(v.shopify_variant_id));
-    }
+    if (allSelected) currentBatch.forEach(v => next.delete(v.shopify_variant_id));
+    else currentBatch.forEach(v => next.add(v.shopify_variant_id));
     setSelectedCatalogVariants(next);
   };
 
   const handleSendCatalogImages = async () => {
-    if (!editingOrder) return;
     if (selectedCatalogVariants.size === 0) {
-      addToast('⚠️ Please select at least one item to send.', 'warning');
+      addToast('⚠️ Select at least one item to send.', 'warning');
       return;
     }
-    
     setSendingCatalog(true);
     try {
       const selectedObjects = catalogVariants.filter(v => selectedCatalogVariants.has(v.shopify_variant_id));
-      const imageUrls = selectedObjects.map(v => v.image_url);
-      
-      addToast(`📦 Preparing ${imageUrls.length} items. Opening WhatsApp...`, 'success');
-
-      const name = editingOrder.customer_name ? editingOrder.customer_name.trim() : 'Customer';
-      const cleanName = name.replace(/\s+/g, ' '); 
-      
-      // Structured list of variants
-      const itemsListText = selectedObjects.map((v, idx) => `*${idx + 1}.* ${v.title} - Rs. ${v.price.toLocaleString()}`).join('\n');
+      const imageUrls = selectedObjects.map(v => v.image_url).filter(Boolean);
+      const cleanName = (editingOrder.customer_name || 'Customer').trim().replace(/\s+/g, ' ');
+      const itemsListText = selectedObjects.map((v, idx) => `*${idx + 1}.* ${v.title} - Rs. ${Number(v.price || 0).toLocaleString()}`).join('\n');
       const message = `Assalam o Alaikum ${cleanName}, here are the available in-stock items in your size (${selectedSize}):\n\n${itemsListText}`;
-      
-      const waPhone = String(editingOrder.phone || '').replace(/\D/g, '').replace(/^0/, '92');
-      const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
-      const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
-      
-      let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(message)}`;
-      if (imageUrls.length > 0) {
-        waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
-      }
-      
-      window.open(waLink, '_blank');
 
-      const useLocalHelper = localStorage.getItem('trace_use_local_helper') === 'true';
-      if (useLocalHelper && imageUrls.length > 0) {
-        setTimeout(async () => {
-          try {
-            await fetch('http://127.0.0.1:9099/paste-image', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ imageUrls })
-            });
-          } catch (err) {
-            console.warn('Local helper not running:', err.message);
-          }
+      const waPhone = String(editingOrder.phone || '').replace(/\D/g, '').replace(/^0/, '92');
+      const waBase = localStorage.getItem('trace_use_wa_web') === 'true' ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+      let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(message)}`;
+      if (imageUrls.length > 0) waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
+      window.open(waLink, '_blank');
+      addToast(`📦 Opened WhatsApp with ${imageUrls.length} catalog items`, 'success');
+
+      if (localStorage.getItem('trace_use_local_helper') === 'true' && imageUrls.length > 0) {
+        setTimeout(() => {
+          fetch('http://127.0.0.1:9099/paste-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageUrls })
+          }).catch(() => {});
         }, 1500);
       }
     } catch (err) {
@@ -313,268 +421,152 @@ export default function EditOrderModal({
     }
   };
 
-  useEffect(() => {
-    if (editingOrder) {
-      fetch('/api/whatsapp/templates', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}` }
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) setWATemplates(data);
-        })
-        .catch(err => console.error('Failed to fetch templates:', err));
-
-      fetch('/api/logistics/couriers', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}` }
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) setActiveCouriers(data);
-        })
-        .catch(err => console.error('Failed to fetch active couriers:', err));
-    }
-  }, [editingOrder]);
-
-  // Close modal or sub-panels on Escape key press
-  useEffect(() => {
-    if (!editingOrder) return;
-
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        if (showProductSearch) return;
-        if (showQuickReplyPanel) {
-          setShowQuickReplyPanel(false);
-          return;
-        }
-        if (showTemplateCreator) {
-          setShowTemplateCreator(false);
-          return;
-        }
-        if (showPillsManager) {
-          setShowPillsManager(false);
-          return;
-        }
-        setEditingOrder(null);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [
-    editingOrder, showProductSearch, showQuickReplyPanel, showTemplateCreator, showPillsManager,
-    setEditingOrder, setShowQuickReplyPanel, setShowTemplateCreator, setShowPillsManager
-  ]);
-
-  if (!editingOrder) return null;
-
-  const handleAutoCODConfirm = async () => {
-    addToast("⏳ Triggering Auto COD confirmation...", "info");
-    try {
-      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
-      const res = await fetch('/api/whatsapp-governance/cod-verify/trigger', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ order_id: editingOrder.id })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        addToast("✅ Auto COD confirmation message triggered successfully!", "success");
-      } else {
-        addToast(`❌ Failed to trigger Auto COD: ${data.error || 'Unknown error'}`, "error");
-      }
-    } catch (err) {
-      addToast(`❌ Failed to trigger Auto COD: ${err.message || err}`, "error");
-    }
-  };
-
   const handleManualAction = (e) => {
     const actionValue = e.target.value;
     if (!actionValue) return;
+    e.target.value = '';
 
     const formattedPhone = editingOrder.phone || '';
     const name = editingOrder.customer_name || 'Customer';
-    const orderId = editingOrder.ref_number || editingOrder.shopify_order_id;
-    const price = Math.round(parseFloat(editingOrder.price) || 0);
+    const orderRef = editingOrder.ref_number || editingOrder.shopify_order_id;
+    const price = Math.round(liveTotal || parseFloat(editingOrder.price) || 0);
+    const waPhone = formattedPhone.replace(/\D/g, '').replace(/^0/, '92');
+    const waBase = localStorage.getItem('trace_use_wa_web') === 'true' ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
 
     if (actionValue === 'manual_cod') {
-      e.target.value = ""; // Reset
-      const manualConfirmMsg = `Assalam o Alaikum ${name}, please confirm your order #${orderId} of Rs. ${price}. Reply 1 to Confirm, 2 to Cancel.`;
-      const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-      const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
-      const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
-      const waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
-      window.open(waLink, '_blank');
+      const manualConfirmMsg = `Assalam o Alaikum ${name}, please confirm your order #${orderRef} of Rs. ${price}. Reply 1 to Confirm, 2 to Cancel.`;
+      window.open(`${waBase}?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`, '_blank');
       return;
     }
 
     if (actionValue.startsWith('template_')) {
-      e.target.value = ""; // Reset
-      const templateId = actionValue.replace('template_', '');
-      const template = waTemplates.find(t => t.id === parseInt(templateId));
+      const templateId = parseInt(actionValue.replace('template_', ''), 10);
+      const template = waTemplates.find(t => t.id === templateId);
       if (!template) return;
 
       const courier = editingOrder.courier || 'our courier';
       const tracking = editingOrder.tracking_number || '';
-      
-      let msg = template.content
-         .replace(/\[Name\]/g, name)
-         .replace(/\[OrderID\]/g, orderId)
-         .replace(/\[Price\]/g, price)
-         .replace(/\[Courier\]/g, courier)
-         .replace(/\[Tracking\]/g, tracking)
-         .replace(/\[Address\]/g, editingOrder.address || 'N/A')
-         .replace(/\[City\]/g, editingOrder.city || 'N/A')
-         .replace(/\[Phone\]/g, editingOrder.phone || 'N/A')
-         .replace(/\[Products\]/g, editingOrder.product_titles || 'N/A')
-         .replace(/\[RefNumber\]/g, editingOrder.ref_number || 'N/A')
-         .replace(/\[ItemsCount\]/g, editingOrder.items_count || '0');
-
-      const trackingSlug = editingOrder.tracking_slug || 'tr_mock_slug';
-      const trackingLink = `${window.location.origin}/track/${trackingSlug}`;
+      const trackingLink = editingOrder.tracking_slug
+        ? `${window.location.origin}/track/${editingOrder.tracking_slug}`
+        : 'N/A';
 
       let courierLink = 'N/A';
       if (tracking && tracking !== 'N/A') {
-        const courierLower = (courier || '').toLowerCase();
-        if (courierLower.includes('postex')) {
-          courierLink = `https://postex.pk/tracking?cn=${tracking}`;
-        } else {
-          courierLink = `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${tracking}`;
-        }
+        courierLink = courier.toLowerCase().includes('postex')
+          ? `https://postex.pk/tracking?cn=${tracking}`
+          : `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${tracking}`;
       }
 
-      msg = msg
+      const msg = String(template.content || '')
+        .replace(/\[Name\]/g, name)
+        .replace(/\[OrderID\]/g, orderRef)
+        .replace(/\[Price\]/g, price)
+        .replace(/\[Courier\]/g, courier)
+        .replace(/\[Tracking\]/g, tracking)
+        .replace(/\[Address\]/g, editingOrder.address || 'N/A')
+        .replace(/\[City\]/g, editingOrder.city || 'N/A')
+        .replace(/\[Phone\]/g, editingOrder.phone || 'N/A')
+        .replace(/\[Products\]/g, editingOrder.product_titles || localItems.map(i => `${i.title} x${i.quantity}`).join(', ') || 'N/A')
+        .replace(/\[RefNumber\]/g, editingOrder.ref_number || 'N/A')
+        .replace(/\[ItemsCount\]/g, String(localItems.reduce((s, i) => s + (parseInt(i.quantity, 10) || 1), 0)))
         .replace(/\[Link\]/g, trackingLink)
         .replace(/\[TraceLink\]/g, trackingLink)
         .replace(/\[CourierLink\]/g, courierLink);
 
-      let imageUrls = [];
-      try {
-        const items = JSON.parse(editingOrder.line_items || '[]');
-        imageUrls = items.map(i => i.image_url).filter(Boolean);
-      } catch (e) {}
-
-      const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-      const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
-      const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+      const imageUrls = localItems.map(i => i.image_url).filter(Boolean);
       let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
-      if (imageUrls.length > 0) {
-        waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
-      }
+      if (imageUrls.length > 0) waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
       window.open(waLink, '_blank');
 
-      const useLocalHelper = localStorage.getItem('trace_use_local_helper') === 'true';
-      if (useLocalHelper && imageUrls.length > 0) {
-        setTimeout(async () => {
-          try {
-            await fetch('http://127.0.0.1:9099/paste-image', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ imageUrls })
-            });
-          } catch (err) {
-            console.warn('Local helper not running:', err.message);
-          }
+      if (localStorage.getItem('trace_use_local_helper') === 'true' && imageUrls.length > 0) {
+        setTimeout(() => {
+          fetch('http://127.0.0.1:9099/paste-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageUrls })
+          }).catch(() => {});
         }, 1500);
       }
     }
   };
 
+  // Lifecycle state flags for smart contextual bottom bar
+  const statusLower = String(editingOrder.delivery_status || 'pending').toLowerCase();
+  const isBooked = Boolean(editingOrder.tracking_number);
+  const isFinal = FINAL_LOCKED_STATUSES.includes(statusLower);
+  const isConfirmed = !isBooked && (statusLower === 'confirmed' || Boolean(editingOrder.confirmed_at));
+  const canConfirm = !isBooked && !isFinal && !isConfirmed;
+  const canCancelBooking = isBooked && !isFinal;
+
+  // Configured couriers for quick Book dropdown
+  const bookChoices = [];
+  if (activeStore?.postex_token || (!activeStore?.instaworld_key && !activeStore?.instaworld_key_backup && !activeStore?.instaworld_key_3)) {
+    bookChoices.push({ key: 'PostEx', label: '🚀 PostEx' });
+  }
+  if (activeStore?.instaworld_key) {
+    bookChoices.push({ key: 'insta:primary', label: `🌐 Instaworld 1 (${activeStore.instaworld_key.substring(0, 4)}...)` });
+  }
+  if (activeStore?.instaworld_key_backup) {
+    bookChoices.push({ key: 'insta:backup', label: `🌐 Instaworld 2 (${activeStore.instaworld_key_backup.substring(0, 4)}...)` });
+  }
+  if (activeStore?.instaworld_key_3) {
+    bookChoices.push({ key: 'insta:key3', label: `🌐 Instaworld 3 (${activeStore.instaworld_key_3.substring(0, 4)}...)` });
+  }
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(8px)', fontFamily: 'sans-serif' }}>
-      <div style={{ width: '100%', maxWidth: 1200, maxHeight: '92vh', background: '#0f172a', border: '1px solid #334155', borderRadius: 24, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideUp 0.3s ease-out' }}>
-        
-        {/* Render OrderHeader (includes risk banner, basic info, badges) */}
+    <div
+      className="eom-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) requestClose();
+      }}
+    >
+      <div className="eom-shell">
         <OrderHeader
           editingOrder={editingOrder}
-          setEditingOrder={setEditingOrder}
+          onClose={requestClose}
           editorLoading={editorLoading}
           custIntel={custIntel}
-          handleWaSimulate={handleWaSimulate}
-          waSimulating={waSimulating}
+          handleCancelOrder={handleCancelOrder}
+          actionBusy={actionBusy}
+          isDirty={isDirty}
+          addToast={addToast}
         >
-          {/* Navigation Tabs */}
-          <div style={{ display: 'flex', gap: 8, borderBottom: 'none' }}>
-            <button 
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button
               type="button"
               onClick={() => setActiveTab('financials')}
-              style={{ 
-                padding: '12px 20px', 
-                background: activeTab === 'financials' ? '#0f172a' : 'transparent', 
-                color: activeTab === 'financials' ? '#6366f1' : '#94a3b8', 
-                borderTopLeftRadius: 16, 
-                borderTopRightRadius: 16, 
-                border: activeTab === 'financials' ? '1px solid #334155' : 'none', 
-                borderBottom: 'none', 
-                fontWeight: 700, 
-                fontSize: '0.85rem', 
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8
-              }}
+              className={`eom-tab ${activeTab === 'financials' ? 'active' : ''}`}
             >
               <span>🛒</span>
-              <span>Line Items & Financials</span>
+              <span>Line Items &amp; Financials</span>
             </button>
-            <button 
+            <button
               type="button"
               onClick={() => setActiveTab('customer')}
-              style={{ 
-                padding: '12px 20px', 
-                background: activeTab === 'customer' ? '#0f172a' : 'transparent', 
-                color: activeTab === 'customer' ? '#6366f1' : '#94a3b8', 
-                borderTopLeftRadius: 16, 
-                borderTopRightRadius: 16, 
-                border: activeTab === 'customer' ? '1px solid #334155' : 'none', 
-                borderBottom: 'none', 
-                fontWeight: 700, 
-                fontSize: '0.85rem', 
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8
-              }}
+              className={`eom-tab ${activeTab === 'customer' ? 'active' : ''}`}
             >
               <span>👤</span>
-              <span>Customer & WhatsApp Success</span>
+              <span>Customer &amp; WhatsApp</span>
             </button>
-            <button 
+            <button
               type="button"
               onClick={() => setActiveTab('logistics')}
-              style={{ 
-                padding: '12px 20px', 
-                background: activeTab === 'logistics' ? '#0f172a' : 'transparent', 
-                color: activeTab === 'logistics' ? '#6366f1' : '#94a3b8', 
-                borderTopLeftRadius: 16, 
-                borderTopRightRadius: 16, 
-                border: activeTab === 'logistics' ? '1px solid #334155' : 'none', 
-                borderBottom: 'none', 
-                fontWeight: 700, 
-                fontSize: '0.85rem', 
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8
-              }}
+              className={`eom-tab ${activeTab === 'logistics' ? 'active' : ''}`}
             >
               <span>🚚</span>
-              <span>Courier Logistics & Timeline</span>
+              <span>Courier &amp; Tracking</span>
+              {Boolean(editingOrder.tracking_number) && (
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+              )}
             </button>
           </div>
         </OrderHeader>
 
         {/* Modal Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 28, background: '#0f172a', color: '#f1f5f9', position: 'relative' }}>
-          
+        <div className="eom-body">
           {/* TAB 1: Line Items & Financials */}
           {activeTab === 'financials' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 28 }}>
-              {/* Left Side: Line Items List */}
+            <div className="eom-grid-main">
               <ItemsList
                 localItems={localItems}
                 setLocalItems={setLocalItems}
@@ -586,98 +578,152 @@ export default function EditOrderModal({
                 filteredGroups={filteredGroups}
               />
 
-              {/* Right Side: Financials & Profitability Summary */}
               <PaymentSummary
                 liveSubtotal={liveSubtotal}
                 localDiscount={localDiscount}
                 setLocalDiscount={setLocalDiscount}
                 shippingFee={localShippingFee}
                 setShippingFee={setLocalShippingFee}
-                courierFee={editingOrder.courier_fee || 0}
-                setCourierFee={(val) => {
-                  setEditingOrder({ ...editingOrder, courier_fee: val });
-                  if (updateOrderField) updateOrderField(editingOrder.id, 'courier_fee', val);
+                courierFee={editingOrder.courier_fee ?? 0}
+                setCourierFee={(val) => setEditingOrder(prev => ({ ...prev, courier_fee: val }))}
+                onCourierFeeBlur={() => {
+                  if (updateOrderField) {
+                    updateOrderField(editingOrder.id, 'courier_fee', parseFloat(editingOrder.courier_fee || 0) || 0);
+                  }
                 }}
                 liveTotal={liveTotal}
                 totalOrderCost={totalOrderCost}
+                zeroCostCount={zeroCostCount}
                 netProfit={netProfit}
                 profitMargin={profitMargin}
+                paymentStatus={editingOrder.payment_status}
                 localNotes={localNotes}
                 setLocalNotes={setLocalNotes}
               />
             </div>
           )}
 
-          {/* TAB 2: Customer & WhatsApp Success */}
+          {/* TAB 2: Customer & WhatsApp */}
           {activeTab === 'customer' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 28 }}>
-              
-              {/* Left Side: Customer Info & AI Address Quality */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12 }}>👤 Customer Details</div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="eom-grid-customer">
+              {/* Left Column: Customer Intelligence + Details */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                {/* Customer Track Record KPI Strip */}
+                <div className="eom-card" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: '1.1rem' }}>
+                      {Number(custIntel?.returned || 0) > 0 ? '⚠️' : Number(custIntel?.delivered || 0) >= 2 ? '⭐' : '📊'}
+                    </span>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Full Name</label>
-                      <input 
-                        value={editingOrder.customer_name || ''} 
-                        onChange={e => setEditingOrder({ ...editingOrder, customer_name: e.target.value })}
+                      <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        Customer Delivery History
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                        {custIntelLoading
+                          ? 'Checking past orders...'
+                          : Number(custIntel?.total || 0) <= 1
+                          ? 'First-time customer'
+                          : Number(custIntel?.returned || 0) === 0
+                          ? 'Trusted repeat buyer — 0% historical RTO'
+                          : `${custIntel.rto_rate || 0}% historical RTO rate`}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', padding: '4px 10px', borderRadius: 8, fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Orders: {custIntel?.total || 0}
+                    </span>
+                    <span style={{ background: 'rgba(16,185,129,0.12)', color: '#059669', border: '1px solid rgba(16,185,129,0.28)', padding: '4px 10px', borderRadius: 8, fontSize: '0.74rem', fontWeight: 700 }}>
+                      Delivered: {custIntel?.delivered || 0}
+                    </span>
+                    <span style={{
+                      background: Number(custIntel?.returned || 0) > 0 ? 'rgba(239,68,68,0.12)' : 'var(--bg-elevated)',
+                      color: Number(custIntel?.returned || 0) > 0 ? '#dc2626' : 'var(--text-secondary)',
+                      border: `1px solid ${Number(custIntel?.returned || 0) > 0 ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`,
+                      padding: '4px 10px', borderRadius: 8, fontSize: '0.74rem', fontWeight: 700
+                    }}>
+                      Returned: {custIntel?.returned || 0}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Customer Details Card */}
+                <div className="eom-card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+                    👤 Customer &amp; Shipping Details
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
+                    <div>
+                      <label className="eom-label">Full Name</label>
+                      <input
+                        className="eom-input"
+                        value={editingOrder.customer_name || ''}
+                        onChange={e => setEditingOrder(prev => ({ ...prev, customer_name: e.target.value }))}
                         onBlur={() => updateOrderField && updateOrderField(editingOrder.id, 'customer_name', editingOrder.customer_name)}
-                        style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '10px 12px', color: '#fff', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}
                       />
                     </div>
                     <div>
-                      <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Phone Number</label>
-                        {editingOrder.phone && <a href={`tel:${editingOrder.phone}`} style={{ fontSize: '0.75rem', color: '#6366f1', textDecoration: 'none', fontWeight: 700 }}>📞 Call via SIM</a>}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <label className="eom-label" style={{ marginBottom: 0 }}>Phone Number</label>
+                        {editingOrder.phone && (
+                          <a href={`tel:${editingOrder.phone}`} style={{ fontSize: '0.73rem', color: '#6366f1', textDecoration: 'none', fontWeight: 700 }}>
+                            📞 Call SIM
+                          </a>
+                        )}
                       </div>
-                      <input 
-                        value={editingOrder.phone || ''} 
-                        onChange={e => setEditingOrder({ ...editingOrder, phone: e.target.value })}
+                      <input
+                        className="eom-input"
+                        value={editingOrder.phone || ''}
+                        onChange={e => setEditingOrder(prev => ({ ...prev, phone: e.target.value }))}
                         onBlur={() => updateOrderField && updateOrderField(editingOrder.id, 'phone', editingOrder.phone)}
-                        style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '10px 12px', color: '#fff', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}
                       />
                     </div>
                   </div>
 
-                  {/* AI Address Quality Heuristic */}
                   <div>
-                    <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Delivery Address</label>
-                      <span style={{ background: addrScore.bg, color: addrScore.color, padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 8, flexWrap: 'wrap' }}>
+                      <label className="eom-label" style={{ marginBottom: 0 }}>Delivery Address</label>
+                      <span style={{ background: addrScore.bg, color: addrScore.color, padding: '2px 9px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700 }}>
                         {addrScore.label}
                       </span>
                     </div>
-                    <textarea 
+                    <textarea
                       rows={3}
-                      value={editingOrder.address || ''} 
-                      onChange={e => setEditingOrder({ ...editingOrder, address: e.target.value })}
+                      className="eom-textarea"
+                      value={editingOrder.address || ''}
+                      onChange={e => setEditingOrder(prev => ({ ...prev, address: e.target.value }))}
                       onBlur={() => updateOrderField && updateOrderField(editingOrder.id, 'address', editingOrder.address)}
-                      style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '10px 12px', color: '#fff', fontSize: '0.85rem', outline: 'none', resize: 'none', boxSizing: 'border-box' }}
                     />
-                    <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Ensure sector, street, and house number are present.</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Include house/flat #, street/block &amp; landmark.</span>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button 
+                        <button
                           type="button"
-                          onClick={handleAddressCleanse} 
-                          style={{ background: '#6366f120', color: '#818cf8', border: '1px solid #6366f140', padding: '6px 12px', borderRadius: 10, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                          onClick={handleAddressCleanse}
+                          style={{
+                            background: 'rgba(99,102,241,0.12)', color: '#6366f1',
+                            border: '1px solid rgba(99,102,241,0.32)', padding: '6px 11px',
+                            borderRadius: 9, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer'
+                          }}
                         >
-                          ✨ AI Address Cleanse
+                          ✨ Format Address
                         </button>
-                        <button 
+                        <button
                           type="button"
                           disabled={mapsVerifyLoading}
-                          onClick={handleGoogleMapsVerify} 
-                          style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '6px 12px', borderRadius: 10, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                          onClick={handleGoogleMapsVerify}
+                          style={{
+                            background: 'rgba(16,185,129,0.12)', color: '#059669',
+                            border: '1px solid rgba(16,185,129,0.32)', padding: '6px 11px',
+                            borderRadius: 9, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer'
+                          }}
                         >
                           {mapsVerifyLoading ? '⏳ Verifying...' : '🗺️ Maps Verify'}
                         </button>
                       </div>
                     </div>
 
-                    {/* Google Maps Geocoding Result Display */}
                     <AddressVerificationPanel
                       mapsVerifyResult={mapsVerifyResult}
                       setMapsVerifyResult={setMapsVerifyResult}
@@ -687,278 +733,189 @@ export default function EditOrderModal({
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>City</label>
-                    <input 
-                      value={editingOrder.city || ''} 
-                      onChange={e => setEditingOrder({ ...editingOrder, city: e.target.value })}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 8, flexWrap: 'wrap' }}>
+                      <label className="eom-label" style={{ marginBottom: 0 }}>City</label>
+                      {editingOrder.city ? (
+                        isCityValid ? (
+                          <span style={{ background: 'rgba(16,185,129,0.12)', color: '#059669', padding: '2px 9px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700 }}>
+                            ✓ Valid PostEx City
+                          </span>
+                        ) : (
+                          <span style={{ background: 'rgba(245,158,11,0.14)', color: '#d97706', padding: '2px 9px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700 }}>
+                            ⚠️ Unrecognized PostEx City
+                          </span>
+                        )
+                      ) : (
+                        <span style={{ background: 'rgba(239,68,68,0.12)', color: '#dc2626', padding: '2px 9px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700 }}>
+                          🔴 City Missing
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      className="eom-input"
+                      style={{
+                        maxWidth: 320,
+                        borderColor: editingOrder.city && !isCityValid ? '#f59e0b' : undefined
+                      }}
+                      value={editingOrder.city || ''}
+                      onChange={e => setEditingOrder(prev => ({ ...prev, city: e.target.value }))}
                       onBlur={() => updateOrderField && updateOrderField(editingOrder.id, 'city', editingOrder.city)}
-                      style={{ width: '50%', background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '10px 12px', color: '#fff', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Right Side: WhatsApp Verification Hub & Notes */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                
-                {/* 1. WhatsApp Native App Actions (Manual Dispatch) */}
-                <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '1.1rem' }}>💬</span> WhatsApp Native App (Manual)
+              {/* Right Column: Manual WhatsApp Tools + Shopify Customer Notes */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                {/* 1. Manual WhatsApp Templates */}
+                <div className="eom-card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+                    💬 WhatsApp Message Templates
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <select 
-                      onChange={handleManualAction}
-                      defaultValue=""
-                      style={{ 
-                        width: '100%', 
-                        background: '#0f172a', 
-                        border: '1px solid #334155', 
-                        borderRadius: 12, 
-                        padding: '10px 12px', 
-                        color: '#fff', 
-                        fontSize: '0.85rem', 
-                        outline: 'none', 
-                        cursor: 'pointer',
-                        boxSizing: 'border-box',
-                        transition: 'border-color 0.2s, box-shadow 0.2s'
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = '#6366f1';
-                        e.target.style.boxShadow = '0 0 0 2px rgba(99, 102, 241, 0.2)';
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#334155';
-                        e.target.style.boxShadow = 'none';
-                      }}
-                    >
-                      <option value="" disabled>Select template / manual action...</option>
-                      <option value="manual_cod">Manual COD Confirm</option>
-                      {waTemplates.length > 0 && (
-                        <optgroup label="Saved WhatsApp Templates">
-                          {waTemplates.map(t => (
-                            <option key={t.id} value={`template_${t.id}`}>{t.name}</option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
-                    <span style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: '1.4' }}>
-                      Launches your device's native WhatsApp desktop or mobile client with custom variables pre-filled.
-                    </span>
-                  </div>
+                  <select onChange={handleManualAction} defaultValue="" className="eom-select">
+                    <option value="" disabled>Select template / quick action...</option>
+                    <option value="manual_cod">Manual COD Confirm</option>
+                    {waTemplates.length > 0 && (
+                      <optgroup label="Saved WhatsApp Templates">
+                        {waTemplates.map(t => (
+                          <option key={t.id} value={`template_${t.id}`}>{t.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                    Opens WhatsApp Desktop / Web with order variables and product images pre-filled.
+                  </span>
                 </div>
 
-                {/* 1.5. Send Catalog by Size (Manual Dispatch) */}
-                <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '1.1rem' }}>📏</span> Send Catalog by Size (Manual)
+                {/* 2. Send Catalog by Size */}
+                <div className="eom-card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+                    📏 Send In-Stock Catalog by Size
                   </div>
-                  
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <select
                       value={selectedSize}
                       onChange={(e) => setSelectedSize(e.target.value)}
-                      style={{ 
-                        flex: 1, 
-                        background: '#0f172a', 
-                        border: '1px solid #334155', 
-                        borderRadius: 12, 
-                        padding: '10px 12px', 
-                        color: '#fff', 
-                        fontSize: '0.85rem', 
-                        outline: 'none', 
-                        cursor: 'pointer',
-                        boxSizing: 'border-box'
-                      }}
+                      className="eom-select"
+                      style={{ flex: 1 }}
                     >
                       <optgroup label="Standard Sizes">
-                        <option value="S">S</option>
-                        <option value="M">M</option>
-                        <option value="L">L</option>
-                        <option value="XL">XL</option>
-                        <option value="2XL">2XL</option>
-                        <option value="3XL">3XL</option>
-                        <option value="4XL">4XL</option>
-                        <option value="5XL">5XL</option>
-                        <option value="6XL">6XL</option>
+                        {['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', '6XL'].map(s => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
                       </optgroup>
-                      <optgroup label="Waist/Numeric Sizes">
-                        <option value="30">30</option>
-                        <option value="32">32</option>
-                        <option value="34">34</option>
-                        <option value="36">36</option>
-                        <option value="38">38</option>
-                        <option value="40">40</option>
-                        <option value="42">42</option>
-                        <option value="44">44</option>
-                        <option value="46">46</option>
+                      <optgroup label="Waist / Numeric Sizes">
+                        {['30', '32', '34', '36', '38', '40', '42', '44', '46'].map(s => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
                       </optgroup>
                     </select>
 
-                    <button 
+                    <button
                       type="button"
-                      onClick={handleSendCatalogImages} 
+                      onClick={handleSendCatalogImages}
                       disabled={sendingCatalog || selectedCatalogVariants.size === 0}
-                      style={{ 
-                        background: 'linear-gradient(135deg, #10b981, #059669)', 
-                        color: '#fff', 
-                        border: 'none', 
-                        padding: '10px 16px', 
-                        borderRadius: 12, 
-                        fontSize: '0.78rem', 
-                        fontWeight: 700, 
-                        cursor: 'pointer', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        gap: 6,
-                        transition: 'transform 0.1s, opacity 0.2s',
-                        opacity: (sendingCatalog || selectedCatalogVariants.size === 0) ? 0.6 : 1
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!sendingCatalog && selectedCatalogVariants.size > 0) e.currentTarget.style.transform = 'translateY(-1px)';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!sendingCatalog && selectedCatalogVariants.size > 0) e.currentTarget.style.transform = 'translateY(0)';
+                      style={{
+                        background: 'linear-gradient(135deg, #10b981, #059669)',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '9px 14px',
+                        borderRadius: 10,
+                        fontSize: '0.76rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        opacity: (sendingCatalog || selectedCatalogVariants.size === 0) ? 0.55 : 1
                       }}
                     >
-                      <span>{sendingCatalog ? '⏳ Sending...' : `📸 Send Images (${selectedCatalogVariants.size})`}</span>
+                      {sendingCatalog ? '⏳ Sending...' : `📸 Send (${selectedCatalogVariants.size})`}
                     </button>
                   </div>
 
-                  {/* Option for including out-of-stock but continue selling items */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: '#cbd5e1', padding: '0 4px', margin: '-4px 0 6px 0' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.74rem', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}>
                     <input
                       type="checkbox"
-                      id="wa-include-continue-selling"
                       checked={includeContinueSelling}
                       onChange={(e) => setIncludeContinueSelling(e.target.checked)}
-                      style={{ cursor: 'pointer' }}
                     />
-                    <label htmlFor="wa-include-continue-selling" style={{ cursor: 'pointer', userSelect: 'none' }}>
-                      Include out-of-stock variants set to "Continue Selling"
-                    </label>
-                  </div>
+                    Include "Continue Selling" OOS variants
+                  </label>
 
-                  {/* Checklist & Preview Section */}
                   {loadingCatalog ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0', color: '#94a3b8', fontSize: '0.8rem' }}>
-                      <span style={{ width: 16, height: 16, border: '2px solid #6366f1', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }}></span>
-                      <span>Loading items in size {selectedSize}...</span>
+                    <div style={{ padding: '16px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                      ⏳ Loading size {selectedSize} catalog...
                     </div>
                   ) : catalogVariants.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', fontSize: '0.75rem', color: '#94a3b8' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 700, color: 'var(--text-primary)' }}>
                           <input
                             type="checkbox"
-                            checked={catalogVariants.length > 0 && catalogVariants.slice(batchIndex * 30, (batchIndex + 1) * 30).every(v => selectedCatalogVariants.has(v.shopify_variant_id))}
+                            checked={catalogVariants.slice(batchIndex * 30, (batchIndex + 1) * 30).every(v => selectedCatalogVariants.has(v.shopify_variant_id))}
                             onChange={handleSelectAllToggle}
-                            style={{ cursor: 'pointer' }}
                           />
-                          <span onClick={handleSelectAllToggle} style={{ cursor: 'pointer', fontWeight: 600, color: '#fff' }}>
-                            Select All ({selectedCatalogVariants.size} selected)
-                          </span>
-                        </div>
+                          Select Batch ({selectedCatalogVariants.size})
+                        </label>
                         {catalogVariants.length > 30 && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ color: '#94a3b8' }}>
-                              Batch {batchIndex + 1} ({batchIndex * 30 + 1}-{Math.min((batchIndex + 1) * 30, catalogVariants.length)} of {catalogVariants.length})
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>
+                              {batchIndex * 30 + 1}-{Math.min((batchIndex + 1) * 30, catalogVariants.length)} / {catalogVariants.length}
                             </span>
                             <button
                               type="button"
                               disabled={batchIndex === 0}
-                              onClick={() => setBatchIndex(prev => prev - 1)}
-                              style={{ 
-                                background: '#334155', 
-                                color: '#fff', 
-                                border: 'none', 
-                                borderRadius: 6, 
-                                padding: '4px 10px', 
-                                cursor: 'pointer', 
-                                fontSize: '0.7rem',
-                                fontWeight: 'bold',
-                                opacity: batchIndex === 0 ? 0.4 : 1,
-                                transition: 'opacity 0.2s'
-                              }}
-                            >
-                              &lt;
-                            </button>
+                              onClick={() => setBatchIndex(p => p - 1)}
+                              style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', opacity: batchIndex === 0 ? 0.4 : 1 }}
+                            >&lt;</button>
                             <button
                               type="button"
                               disabled={(batchIndex + 1) * 30 >= catalogVariants.length}
-                              onClick={() => setBatchIndex(prev => prev + 1)}
-                              style={{ 
-                                background: '#334155', 
-                                color: '#fff', 
-                                border: 'none', 
-                                borderRadius: 6, 
-                                padding: '4px 10px', 
-                                cursor: 'pointer', 
-                                fontSize: '0.7rem',
-                                fontWeight: 'bold',
-                                opacity: (batchIndex + 1) * 30 >= catalogVariants.length ? 0.4 : 1,
-                                transition: 'opacity 0.2s'
-                              }}
-                            >
-                              &gt;
-                            </button>
+                              onClick={() => setBatchIndex(p => p + 1)}
+                              style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', opacity: (batchIndex + 1) * 30 >= catalogVariants.length ? 0.4 : 1 }}
+                            >&gt;</button>
                           </div>
                         )}
                       </div>
 
-                      <div style={{ 
-                        maxHeight: 200, 
-                        overflowY: 'auto', 
-                        border: '1px solid #334155', 
-                        borderRadius: 12, 
-                        background: '#0f172a',
-                        padding: 8,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 8
+                      <div style={{
+                        maxHeight: 190, overflowY: 'auto',
+                        border: '1px solid var(--border)', borderRadius: 10,
+                        background: 'var(--bg-elevated)', padding: 6,
+                        display: 'flex', flexDirection: 'column', gap: 5
                       }}>
                         {catalogVariants.slice(batchIndex * 30, (batchIndex + 1) * 30).map((v) => {
                           const isSelected = selectedCatalogVariants.has(v.shopify_variant_id);
                           return (
-                            <div 
+                            <div
                               key={v.shopify_variant_id}
                               onClick={() => toggleVariantSelection(v.shopify_variant_id)}
-                              style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: 10, 
-                                padding: '6px 8px', 
-                                borderRadius: 8, 
-                                background: isSelected ? 'rgba(16, 185, 129, 0.08)' : 'transparent',
-                                border: `1px solid ${isSelected ? 'rgba(16, 185, 129, 0.3)' : 'transparent'}`,
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease'
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 8,
+                                padding: '5px 7px', borderRadius: 8, cursor: 'pointer',
+                                background: isSelected ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+                                border: `1px solid ${isSelected ? 'rgba(16, 185, 129, 0.3)' : 'transparent'}`
                               }}
                             >
                               <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={(e) => { e.stopPropagation(); toggleVariantSelection(v.shopify_variant_id); }}
-                                    style={{ cursor: 'pointer' }}
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => { e.stopPropagation(); toggleVariantSelection(v.shopify_variant_id); }}
                               />
-                              <img 
-                                src={v.image_url} 
-                                alt={v.title} 
-                                style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', border: '1px solid #334155' }} 
+                              <img
+                                src={v.image_url}
+                                alt={v.title}
+                                style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)' }}
                               />
-                              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-                                <span style={{ fontSize: '0.8rem', color: '#fff', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {v.title}
-                                </span>
-                                {v.sku && (
-                                  <span style={{ fontSize: '0.65rem', color: '#64748b' }}>
-                                    {v.sku}
-                                  </span>
-                                )}
+                                </div>
+                                {v.sku && <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{v.sku}</div>}
                               </div>
-                              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#10b981', flexShrink: 0 }}>
-                                Rs. {v.price.toLocaleString()}
+                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', flexShrink: 0 }}>
+                                Rs {Number(v.price || 0).toLocaleString()}
                               </span>
                             </div>
                           );
@@ -966,225 +923,27 @@ export default function EditOrderModal({
                       </div>
                     </div>
                   ) : (
-                    <div style={{ padding: '16px', border: '1px dashed #334155', borderRadius: 12, textAlign: 'center', color: catalogError ? '#f87171' : '#fb923c', fontSize: '0.8rem' }}>
-                      {catalogError
-                        ? `❌ Catalog load failed: ${catalogError}`
-                        : `⚠️ No in-stock items found matching size: ${selectedSize}`}
+                    <div style={{ padding: 14, border: '1px dashed var(--border-bright)', borderRadius: 10, textAlign: 'center', color: catalogError ? '#dc2626' : '#d97706', fontSize: '0.78rem' }}>
+                      {catalogError ? `❌ ${catalogError}` : `⚠️ No in-stock items matching size ${selectedSize}`}
                     </div>
                   )}
-                  <span style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: '1.4' }}>
-                    Selects available catalog items of size {selectedSize} to dispatch. WhatsApp dispatches are capped at 30 items per message to avoid spam flags.
-                  </span>
-                </div>
-
-                {/* 2. Baileys WebSocket API Actions (Auto Dispatch) */}
-                <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '1.1rem' }}>⚡</span> WhatsApp API Actions (Auto)
-                  </div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <button 
-                      type="button"
-                      onClick={handleAutoCODConfirm}
-                      style={{ 
-                        background: '#5b21b6', 
-                        color: '#fff', 
-                        border: 'none', 
-                        padding: '12px 14px', 
-                        borderRadius: 12, 
-                        fontSize: '0.78rem', 
-                        fontWeight: 700, 
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 6,
-                        transition: 'transform 0.1s, opacity 0.2s, background-color 0.2s'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#6d28d9';
-                        e.currentTarget.style.transform = 'translateY(-1px)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = '#5b21b6';
-                        e.currentTarget.style.transform = 'translateY(0)';
-                      }}
-                    >
-                      <span>🚀 Auto COD Confirm</span>
-                    </button>
-                    
-                    <button 
-                      type="button"
-                      onClick={handleSendItemImages} 
-                      disabled={sendingImages || waSimulating}
-                      style={{ 
-                        background: 'linear-gradient(135deg, #a855f7, #ec4899)', 
-                        color: '#fff', 
-                        border: 'none', 
-                        padding: '12px 14px', 
-                        borderRadius: 12, 
-                        fontSize: '0.78rem', 
-                        fontWeight: 700, 
-                        cursor: 'pointer', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        gap: 6,
-                        transition: 'transform 0.1s, opacity 0.2s',
-                        opacity: (sendingImages || waSimulating) ? 0.7 : 1
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!sendingImages && !waSimulating) {
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!sendingImages && !waSimulating) {
-                          e.currentTarget.style.transform = 'translateY(0)';
-                        }
-                      }}
-                    >
-                      <span>{sendingImages ? '⏳ Sending...' : '📸 Send Images'}</span>
-                    </button>
-                  </div>
-
-                  {/* Simulation Sub-Panel */}
-                  <div style={{ marginTop: 4, background: '#0f172a', padding: '14px', borderRadius: 12, border: '1px solid #334155', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>API Simulation Actions</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <button 
-                        type="button"
-                        onClick={() => handleWaSimulate('SEND_VERIFICATION')} 
-                        disabled={waSimulating}
-                        style={{ 
-                          background: '#3b82f620', 
-                          color: '#60a5fa', 
-                          border: '1px solid #3b82f640', 
-                          padding: '10px 12px', 
-                          borderRadius: 8, 
-                          fontSize: '0.75rem', 
-                          fontWeight: 600, 
-                          cursor: 'pointer', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center', 
-                          gap: 6,
-                          transition: 'background-color 0.2s, border-color 0.2s'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#3b82f630';
-                          e.currentTarget.style.borderColor = '#3b82f660';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#3b82f620';
-                          e.currentTarget.style.borderColor = '#3b82f640';
-                        }}
-                      >
-                        📲 Send Verification WA Template
-                      </button>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <button 
-                          type="button"
-                          onClick={() => handleWaSimulate('SIMULATE_CONFIRM')} 
-                          disabled={waSimulating}
-                          style={{ 
-                            background: '#10b98120', 
-                            color: '#34d399', 
-                            border: '1px solid #10b98140', 
-                            padding: '10px 12px', 
-                            borderRadius: 8, 
-                            fontSize: '0.75rem', 
-                            fontWeight: 600, 
-                            cursor: 'pointer', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            gap: 6,
-                            transition: 'background-color 0.2s, border-color 0.2s'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#10b98130';
-                            e.currentTarget.style.borderColor = '#10b98160';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#10b98120';
-                            e.currentTarget.style.borderColor = '#10b98140';
-                          }}
-                        >
-                          ✅ Confirm
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => handleWaSimulate('SIMULATE_CANCEL')} 
-                          disabled={waSimulating}
-                          style={{ 
-                            background: '#f43f5e20', 
-                            color: '#f87171', 
-                            border: '1px solid #f43f5e40', 
-                            padding: '10px 12px', 
-                            borderRadius: 8, 
-                            fontSize: '0.75rem', 
-                            fontWeight: 600, 
-                            cursor: 'pointer', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            gap: 6,
-                            transition: 'background-color 0.2s, border-color 0.2s'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#f43f5e30';
-                            e.currentTarget.style.borderColor = '#f43f5e60';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#f43f5e20';
-                            e.currentTarget.style.borderColor = '#f43f5e40';
-                          }}
-                        >
-                          ❌ Cancel
-                        </button>
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 {/* 3. Shopify Customer Notes */}
-                <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '1.1rem' }}>📝</span> Shopify Customer Notes
+                <div className="eom-card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+                    📝 Shopify Customer Notes
                   </div>
-                  <textarea 
-                    rows={4} 
-                    value={editingOrder.notes || ''} 
-                    onChange={e => setEditingOrder({ ...editingOrder, notes: e.target.value })}
-                    style={{ 
-                      width: '100%', 
-                      background: '#0f172a', 
-                      border: '1px solid #334155', 
-                      borderRadius: 12, 
-                      padding: '10px 12px', 
-                      color: '#fff', 
-                      fontSize: '0.85rem', 
-                      outline: 'none', 
-                      resize: 'none', 
-                      boxSizing: 'border-box',
-                      transition: 'border-color 0.2s, box-shadow 0.2s'
-                    }}
-                    placeholder="Enter customer notes..."
-                    onFocus={(e) => {
-                      e.target.style.borderColor = '#6366f1';
-                      e.target.style.boxShadow = '0 0 0 2px rgba(99, 102, 241, 0.2)';
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = '#334155';
-                      e.target.style.boxShadow = 'none';
-                      updateOrderField && updateOrderField(editingOrder.id, 'notes', editingOrder.notes);
-                    }}
+                  <textarea
+                    rows={3}
+                    className="eom-textarea"
+                    value={editingOrder.notes || ''}
+                    onChange={e => setEditingOrder(prev => ({ ...prev, notes: e.target.value }))}
+                    onBlur={() => updateOrderField && updateOrderField(editingOrder.id, 'notes', editingOrder.notes)}
+                    placeholder="Customer delivery instructions or notes..."
                   />
-                  <p style={{ fontSize: '0.7rem', color: '#64748b', margin: '4px 0 0' }}>Notes sync live with Shopify.</p>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Syncs live with Shopify order notes on blur.</span>
                 </div>
-
               </div>
             </div>
           )}
@@ -1197,50 +956,207 @@ export default function EditOrderModal({
               trackingSlug={editingOrder.tracking_slug}
               trackingLoading={trackingLoading}
               trackingData={trackingData}
+              liveHistory={liveHistory}
+              refreshLiveTracking={refreshLiveTracking}
               bookingCourier={bookingCourier}
+              actionBusy={actionBusy}
               handleBookCourier={handleBookCourier}
+              handleCancelBooking={handleCancelBooking}
+              zeroCostCount={zeroCostCount}
               activeCouriers={activeCouriers}
               updateOrderField={updateOrderField}
               editingOrder={editingOrder}
               setEditingOrder={setEditingOrder}
+              addToast={addToast}
             />
           )}
-
         </div>
 
         {/* Sticky Bottom Action Bar */}
-        <div style={{ padding: '16px 28px', borderTop: '1px solid #334155', background: '#1e293b', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-            <span>Editing Store Order • </span>
-            <span style={{ color: '#fff', fontWeight: 700 }}>{editingOrder.customer_name}</span>
+        <div className="eom-footer">
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span>Customer: <strong style={{ color: 'var(--text-primary)' }}>{editingOrder.customer_name || '—'}</strong></span>
+            <span>•</span>
+            <span>{editingOrder.city || 'No City'}</span>
           </div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <button 
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', position: 'relative' }}>
+            {/* Contextual Order Lifecycle Controls */}
+            {canConfirm && (
+              <button
+                type="button"
+                onClick={handleConfirmOrder}
+                disabled={actionBusy}
+                title="Confirm order and add 'Ready to Book' tag on Shopify"
+                style={{
+                  background: 'rgba(16, 185, 129, 0.14)',
+                  color: '#059669',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  padding: '9px 14px',
+                  borderRadius: 10,
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                {actionBusy ? '⏳...' : '✅ Confirm (+Tag)'}
+              </button>
+            )}
+
+            {isConfirmed && (
+              <button
+                type="button"
+                onClick={handleRevertConfirm}
+                disabled={actionBusy}
+                title="Revert back to Pending and remove 'Ready to Book' tag on Shopify"
+                style={{
+                  background: 'rgba(245, 158, 11, 0.14)',
+                  color: '#d97706',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                  padding: '9px 13px',
+                  borderRadius: 10,
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                {actionBusy ? '⏳...' : '↩️ Revert'}
+              </button>
+            )}
+
+            {!isBooked && !isFinal && (
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowBookMenu(prev => !prev)}
+                  disabled={bookingCourier}
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    color: '#6366f1',
+                    border: '1px solid #6366f1',
+                    padding: '9px 14px',
+                    borderRadius: 10,
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {bookingCourier ? '⏳ Booking...' : '🚀 Book Courier ▾'}
+                </button>
+                {showBookMenu && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: 'calc(100% + 8px)',
+                    right: 0,
+                    minWidth: 220,
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-bright)',
+                    borderRadius: 12,
+                    boxShadow: '0 14px 32px rgba(0,0,0,0.28)',
+                    padding: 6,
+                    zIndex: 40,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4
+                  }}>
+                    {bookChoices.map(ch => (
+                      <button
+                        key={ch.key}
+                        type="button"
+                        onClick={() => {
+                          setShowBookMenu(false);
+                          handleBookCourier(ch.key);
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--text-primary)',
+                          padding: '8px 12px',
+                          borderRadius: 8,
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          textAlign: 'left',
+                          cursor: 'pointer'
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        {ch.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {canCancelBooking && (
+              <button
+                type="button"
+                onClick={handleCancelBooking}
+                disabled={actionBusy}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  color: '#dc2626',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  padding: '9px 14px',
+                  borderRadius: 10,
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                {actionBusy ? '⏳...' : '🛑 Cancel Booking'}
+              </button>
+            )}
+
+            <button
               type="button"
-              onClick={() => handleBookCourier(editingOrder.courier || 'PostEx')} 
-              disabled={bookingCourier}
-              style={{ background: '#0f172a', color: '#6366f1', border: '1px solid #6366f1', padding: '10px 20px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}
+              onClick={() => {
+                const opened = openPackingSlipPrint({
+                  order: editingOrder,
+                  items: localItems,
+                  subtotal: liveSubtotal,
+                  discount: localDiscount,
+                  shippingFee: localShippingFee,
+                  total: liveTotal,
+                  storeName: activeStore?.store_name || activeStore?.shop_domain || 'TRACE ERP'
+                });
+                if (!opened) addToast('⚠️ Popup blocked — allow popups to print Packing Slip.', 'warning');
+              }}
+              style={{
+                background: 'var(--bg-elevated)',
+                color: '#059669',
+                border: '1px solid rgba(16, 185, 129, 0.45)',
+                padding: '9px 14px',
+                borderRadius: 10,
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
             >
-              🚀 Book Courier
+              🖨️ Packing Slip
             </button>
-            <button 
+
+            <button
               type="button"
-              onClick={() => window.print()} 
-              style={{ background: '#0f172a', color: '#10b981', border: '1px solid #10b981', padding: '10px 20px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}
-            >
-              🖨️ Print Packing Slip
-            </button>
-            <button 
-              type="button"
-              onClick={handleCSUpdate} 
+              onClick={handleCSUpdate}
               disabled={isSavingCS}
-              style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(99,102,241,0.3)' }}
+              style={{
+                background: isDirty ? '#4f46e5' : '#6366f1',
+                color: '#fff',
+                border: 'none',
+                padding: '9px 20px',
+                borderRadius: 10,
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: isDirty ? '0 0 0 3px rgba(99,102,241,0.32)' : '0 4px 12px rgba(99,102,241,0.25)'
+              }}
             >
-              {isSavingCS ? '⏳ Saving...' : '💾 Save Changes'}
+              {isSavingCS ? '⏳ Saving...' : isDirty ? '💾 Save Changes ●' : '💾 Save Changes'}
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );

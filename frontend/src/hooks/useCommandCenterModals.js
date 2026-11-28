@@ -25,24 +25,29 @@ export default function useCommandCenterModals() {
   const [editorLoading, setEditorLoading] = useState(false)
   const [validCities, setValidCities] = useState([])
 
+  const editingOrderId = editingOrder?.id || null
+
   useEffect(() => {
-    if (editingOrder) {
+    if (editingOrderId && validCities.length === 0) {
       fetch(`/api/orders/logistics/cities?courier=PostEx`)
         .then(res => res.json())
-        .then(setValidCities)
+        .then(data => { if (Array.isArray(data)) setValidCities(data) })
         .catch(console.error)
     }
-  }, [editingOrder])
+  }, [editingOrderId, validCities.length])
 
   const isCityValid = editingOrder && validCities.length > 0 
-    ? validCities.some(v => v.toLowerCase() === (editingOrder.city || '').toLowerCase())
+    ? validCities.some(v => v.toLowerCase() === (editingOrder.city || '').trim().toLowerCase())
     : true
 
   const fetchOrderDetails = async (orderId) => {
     setEditorLoading(true)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/${orderId}/details`)
+      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+      const res = await fetch(`${apiUrl}/api/orders/${orderId}/details`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      })
       const data = await res.json()
       setEditingOrder(data)
     } catch (e) {

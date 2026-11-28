@@ -8,6 +8,7 @@ const CSUpdateForm = React.memo(({
   setShippingFee,
   courierFee,
   setCourierFee,
+  onCourierFeeBlur,
   localNotes,
   setLocalNotes
 }) => {
@@ -18,11 +19,19 @@ const CSUpdateForm = React.memo(({
     }
   };
 
+  const rowStyle = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: '0.84rem',
+    color: 'var(--text-secondary)'
+  };
+
   const renderInputs = () => (
     <>
-      <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8', alignItems: 'center' }}>
+      <div style={rowStyle}>
         <span>CS Discount</span>
-        <input 
+        <input
           type="text"
           inputMode="decimal"
           className="cs-update-input"
@@ -31,9 +40,9 @@ const CSUpdateForm = React.memo(({
         />
       </div>
 
-      <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8', alignItems: 'center' }}>
+      <div style={rowStyle}>
         <span title="Shipping fee charged to the customer (adds to Revenue)">Shipping Fee (Customer)</span>
-        <input 
+        <input
           type="text"
           inputMode="decimal"
           className="cs-update-input"
@@ -42,25 +51,26 @@ const CSUpdateForm = React.memo(({
         />
       </div>
 
-      <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8', alignItems: 'center' }}>
-        <span title="Actual cost billed by the courier service (subtracts from Profit)">
+      <div style={rowStyle}>
+        <span title="Actual cost billed by the courier service (subtracts from Net Profit)">
           Courier Expense 📦
         </span>
-        <input 
+        <input
           type="text"
           inputMode="decimal"
           className="cs-update-input-blue"
           value={courierFee}
           onChange={handleNumericChange(setCourierFee)}
+          onBlur={onCourierFeeBlur}
         />
       </div>
     </>
   );
 
   const renderNotes = () => (
-    <div style={{ borderTop: '1px solid #334155', paddingTop: 16, marginTop: 4 }}>
-      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>INTERNAL CS NOTES (ERP ONLY)</label>
-      <textarea 
+    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 2 }}>
+      <label className="eom-label">Internal CS Notes (ERP Only)</label>
+      <textarea
         rows={3}
         className="cs-update-notes-textarea"
         value={localNotes}

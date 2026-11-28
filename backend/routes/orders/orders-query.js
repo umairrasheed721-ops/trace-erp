@@ -351,11 +351,13 @@ router.get('/:id/details', async (req, res) => {
     const { mapShopifyStatus } = require('../../engines/shopify');
     const newStatus = mapShopifyStatus(shopifyOrder);
     
-    // Check if we should update the status
+    // Check if we should update the status (never downgrade Confirmed/Booked or tracked orders to Pending)
     const { isFinalStatus } = require('../../engines/tracking/statusMapper');
     const isProtected = isFinalStatus(order.delivery_status);
+    const currentLower = String(order.delivery_status || '').toLowerCase();
+    const isLocallyAdvanced = Boolean(order.tracking_number) || Boolean(order.confirmed_at) || ['confirmed', 'booked'].includes(currentLower);
     
-    if (!isProtected && newStatus !== order.delivery_status) {
+    if (!isProtected && !isLocallyAdvanced && newStatus !== order.delivery_status) {
       db.prepare('UPDATE orders SET delivery_status = ?, status_date = datetime("now") WHERE id = ?').run(newStatus, order.id);
       order.delivery_status = newStatus;
     }
@@ -409,11 +411,13 @@ router.get('/:id/details', async (req, res) => {
       WHERE id = ?
     `).run(customer_name, phone, address, city, price, ref_number, notes, JSON.stringify(lineItems), order.id);
 
-    // Return the flattened object for the frontend
+    // Return the flattened object for the frontend (strip store access_token!)
+    const { access_token: _strippedToken, ...safeOrder } = order;
     const updatedOrder = {
       ...shopifyOrder,
-      ...order,
-      shopify_order_id: shopifyOrder.id || order.shopify_order_id,
+      ...safeOrder,
+      tags: shopifyOrder.tags !== undefined ? shopifyOrder.tags : safeOrder.tags,
+      shopify_order_id: shopifyOrder.id || safeOrder.shopify_order_id,
       customer_name,
       phone,
       address,
@@ -431,8 +435,9 @@ router.get('/:id/details', async (req, res) => {
     try {
       parsedItems = typeof order.line_items === 'string' ? JSON.parse(order.line_items) : (order.line_items || []);
     } catch(e) {}
+    const { access_token: _strippedFallbackToken, ...safeOrder } = order;
     res.json({
-      ...order,
+      ...safeOrder,
       line_items: parsedItems,
       line_items_parsed: parsedItems,
       fallback_local: true

@@ -1,65 +1,54 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import useOrderItems from './useOrderItems';
 import useOrderSave from './useOrderSave';
 
+function parseLineItemsSafe(order) {
+  if (!order) return [];
+  if (Array.isArray(order.line_items_parsed) && order.line_items_parsed.length > 0) return order.line_items_parsed;
+  if (Array.isArray(order.line_items)) return order.line_items;
+  if (typeof order.line_items === 'string') {
+    try {
+      const parsed = JSON.parse(order.line_items);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  return [];
+}
+
+function extractDiscountSafe(order) {
+  if (!order) return 0;
+  if (order.notes) {
+    try {
+      const parsedNotes = JSON.parse(order.notes);
+      if (parsedNotes && parsedNotes.cs_discount !== undefined) {
+        return Number(parsedNotes.cs_discount) || 0;
+      }
+    } catch (_) {}
+  }
+  return Number(order.discount_amount) || 0;
+}
+
 /**
- * Composer hook for Order Details and Management.
- * Aggregates line-item CRUD states and DB mutate/tracking actions.
+ * Lean Composer Hook for Order Editor Modal.
+ * Zero keystroke API spam: fetches dependencies strictly per order ID.
  */
 export default function useOrderManagement({
   editingOrder,
   setEditingOrder,
   fetchOrderDetails,
   updateOrderField,
-  onLocalOrderUpdate
+  onLocalOrderUpdate,
+  addToast
 }) {
   const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 
-  const getMediaUrlWithToken = useCallback((mediaUrl) => {
-    if (!mediaUrl) return '';
-    if (mediaUrl.startsWith('http') || mediaUrl.startsWith('blob:')) return mediaUrl;
-    const traceToken = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
-    const separator = mediaUrl.includes('?') ? '&' : '?';
-    return `${apiBase}${mediaUrl}${separator}token=${encodeURIComponent(traceToken)}`;
-  }, [apiBase]);
-
-  // Navigation Tabs: 'financials' | 'customer' | 'logistics' | 'whatsapp_chat'
+  // Navigation Tabs: 'financials' | 'customer' | 'logistics'
   const [activeTab, setActiveTab] = useState('financials');
 
-  // Pillar 1: Live WhatsApp Chat State
-  const [chatMessages, setChatMessages] = useState([]);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [botStatus, setBotStatus] = useState('CONNECTING');
-  const [newWaMsg, setNewWaMsg] = useState('');
-  const [sendingWaMsg, setSendingWaMsg] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const fileInputRef = useRef(null);
-
-  // Quick Replies states
-  const [quickReplies, setQuickReplies] = useState([]);
-  const [showQuickReplyPanel, setShowQuickReplyPanel] = useState(false);
-  const [quickReplyTitle, setQuickReplyTitle] = useState('');
-  const [quickReplyCaption, setQuickReplyCaption] = useState('');
-  const [quickReplyMedia, setQuickReplyMedia] = useState(null);
-  const [showTemplateCreator, setShowTemplateCreator] = useState(false);
-  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
-
-  // Quick Pills and Audio Recording states
-  const [quickPills, setQuickPills] = useState([]);
-  const [showPillsManager, setShowPillsManager] = useState(false);
-  const [newPillText, setNewPillText] = useState('');
-  
-  const [isRecording, setIsRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState(null);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  
-  const [chatSearchQuery, setChatSearchQuery] = useState('');
-
-  // 1. Initialize Sub-Hooks
-  const itemsHook = useOrderItems({
-    editingOrder,
-    apiBase
-  });
+  // Sub-Hooks
+  const itemsHook = useOrderItems({ editingOrder, apiBase });
 
   const saveHook = useOrderSave({
     editingOrder,
@@ -70,464 +59,136 @@ export default function useOrderManagement({
     masterProducts: itemsHook.masterProducts,
     liveSubtotal: itemsHook.liveSubtotal,
     apiBase,
-    activeTab,
-    setChatMessages,
-    onLocalOrderUpdate
+    onLocalOrderUpdate,
+    addToast
   });
 
-  // Pillar 1: Customer Intelligence & WhatsApp State Fetchers
-  const fetchQuickPills = useCallback(async () => {
-    try {
-      const r = await fetch(`${apiBase}/api/whatsapp-governance/quick-pills`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-      });
-      const data = await r.json();
-      if (data.quickPills) setQuickPills(data.quickPills);
-    } catch (_) {}
-  }, [apiBase]);
+  const orderId = editingOrder?.id || null;
+  const storeId = editingOrder?.store_id || localStorage.getItem('activeStoreId') || 1;
+  const trackingNumber = editingOrder?.tracking_number || '';
+  const trackingSlug = editingOrder?.tracking_slug || '';
+  const lastHydratedItemsSigRef = useRef('');
 
-  const handleCreateQuickPill = useCallback(async (e) => {
-    e.preventDefault();
-    if (!newPillText.trim()) return;
+  // Multi-courier live tracking history fetcher (PostEx / Instaworld / Leopards / TCS / LCS)
+  const refreshLiveTracking = useCallback(async (tnOverride, stOverride) => {
+    const tn = tnOverride ?? trackingNumber;
+    const st = stOverride ?? storeId;
+    if (!tn) {
+      saveHook.setLiveHistory([]);
+      return;
+    }
+    saveHook.setTrackingLoading(true);
     try {
-      const res = await fetch(`${apiBase}/api/whatsapp-governance/quick-pills`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-        },
-        body: JSON.stringify({ pill_text: newPillText })
-      });
+      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+      const res = await fetch(
+        `${apiBase}/api/shipper-advice/live-tracking-history?tracking_number=${encodeURIComponent(tn)}&store_id=${encodeURIComponent(st)}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
       const data = await res.json();
-      if (data.success) {
-        setNewPillText('');
-        fetchQuickPills();
-      } else {
-        alert(data.error);
+      if (res.ok && data.success) {
+        saveHook.setLiveHistory(Array.isArray(data.tracking_history) ? data.tracking_history : []);
+        if (data.courier_status) {
+          setEditingOrder(prev => prev && prev.tracking_number === tn ? { ...prev, courier_status: data.courier_status } : prev);
+        }
       }
     } catch (_) {
-      alert('Network error saving quick pill');
+      // Fall back to DB tracking_history already parsed below
+    } finally {
+      saveHook.setTrackingLoading(false);
     }
-  }, [apiBase, newPillText, fetchQuickPills]);
+  }, [apiBase, trackingNumber, storeId, setEditingOrder]);
 
-  const handleDeleteQuickPill = useCallback(async (id) => {
-    if (!confirm('Are you sure you want to delete this quick pill?')) return;
-    try {
-      const res = await fetch(`${apiBase}/api/whatsapp-governance/quick-pills/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchQuickPills();
-      } else {
-        alert(data.error);
-      }
-    } catch (_) {
-      alert('Network error deleting quick pill');
-    }
-  }, [apiBase, fetchQuickPills]);
-
-  const startRecording = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      const chunks = [];
-      
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-      
-      recorder.onstop = async () => {
-        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        const file = new File([audioBlob], `voice_note_${Date.now()}.webm`, { type: 'audio/webm' });
-        
-        const formData = new FormData();
-        formData.append('media', file);
-        formData.append('caption', '');
-
-        setIsUploadingMedia(true);
-        setSendingWaMsg(true);
-        try {
-          const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/upload-media`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-            },
-            body: formData
-          });
-          const data = await res.json();
-          if (data.success) {
-            const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
-              headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-            });
-            const chatData = await chatRes.json();
-            if (chatData.messages) setChatMessages(chatData.messages);
-          } else {
-            alert(data.error || 'Voice note upload failed');
-          }
-        } catch (err) {
-          alert('Network error sending voice note');
-        } finally {
-          setIsUploadingMedia(false);
-          setSendingWaMsg(false);
-        }
-      };
-
-      recorder.start();
-      setMediaRecorder(recorder);
-      setIsRecording(true);
-      setRecordingSeconds(0);
-    } catch (err) {
-      alert('Could not access microphone: ' + err.message);
-    }
-  }, [apiBase, editingOrder]);
-
-  const stopRecording = useCallback((shouldSend) => {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      if (!shouldSend) {
-        mediaRecorder.onstop = () => {};
-      }
-      mediaRecorder.stop();
-      mediaRecorder.stream.getTracks().forEach(track => track.stop());
-    }
-    setIsRecording(false);
-    setMediaRecorder(null);
-    setRecordingSeconds(0);
-  }, [mediaRecorder]);
-
+  // 1. Hydrate local form state & fetch remote intelligence STRICTLY when orderId changes (zero keystroke spam!)
   useEffect(() => {
-    let interval = null;
-    if (isRecording) {
-      interval = setInterval(() => {
-        setRecordingSeconds(prev => prev + 1);
-      }, 1000);
-    } else {
-      clearInterval(interval);
-    }
-    return () => clearInterval(interval);
-  }, [isRecording]);
-
-  const fetchQuickReplies = useCallback(async () => {
-    try {
-      const r = await fetch(`${apiBase}/api/whatsapp-governance/quick-replies`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-      });
-      const data = await r.json();
-      if (data.quickReplies) setQuickReplies(data.quickReplies);
-    } catch (_) {}
-  }, [apiBase]);
-
-  const handleSendQuickReply = useCallback(async (replyId) => {
-    setSendingWaMsg(true);
-    try {
-      const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/send-quick-reply`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-        },
-        body: JSON.stringify({ replyId })
-      });
-      const data = await res.json();
-      if (data.success) {
-        const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-        });
-        const chatData = await chatRes.json();
-        if (chatData.messages) setChatMessages(chatData.messages);
-        setShowQuickReplyPanel(false);
-      } else {
-        alert(data.error || 'Failed to send quick reply');
-      }
-    } catch (err) {
-      alert('Network error sending quick reply');
-    } finally {
-      setSendingWaMsg(false);
-    }
-  }, [apiBase, editingOrder]);
-
-  const handleCreateQuickReply = useCallback(async (e) => {
-    e.preventDefault();
-    if (!quickReplyTitle.trim()) return alert('Title is required');
-
-    const formData = new FormData();
-    formData.append('title', quickReplyTitle);
-    formData.append('caption', quickReplyCaption);
-    if (quickReplyMedia) {
-      formData.append('media', quickReplyMedia);
-    }
-
-    setSendingWaMsg(true);
-    try {
-      const res = await fetch(`${apiBase}/api/whatsapp-governance/quick-replies`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-        },
-        body: formData
-      });
-      const data = await res.json();
-      if (data.success) {
-        setQuickReplyTitle('');
-        setQuickReplyCaption('');
-        setQuickReplyMedia(null);
-        setShowTemplateCreator(false);
-        fetchQuickReplies();
-      } else {
-        alert(data.error || 'Failed to create quick reply');
-      }
-    } catch (err) {
-      alert('Network error creating quick reply');
-    } finally {
-      setSendingWaMsg(false);
-    }
-  }, [apiBase, quickReplyTitle, quickReplyCaption, quickReplyMedia, fetchQuickReplies]);
-
-  const handleDeleteQuickReply = useCallback(async (id) => {
-    if (!confirm('Are you sure you want to delete this quick reply?')) return;
-    try {
-      const res = await fetch(`${apiBase}/api/whatsapp-governance/quick-replies/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchQuickReplies();
-      } else {
-        alert(data.error || 'Failed to delete');
-      }
-    } catch (_) {
-      alert('Network error deleting quick reply');
-    }
-  }, [apiBase, fetchQuickReplies]);
-
-  const handleSendWaMessage = useCallback(async (customText) => {
-    const textToSend = customText || newWaMsg;
-    if (!textToSend.trim()) return;
-
-    setSendingWaMsg(true);
-    try {
-      const res = await fetch(`${apiBase}/api/whatsapp/send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-        },
-        body: JSON.stringify({ 
-          phone: editingOrder.phone,
-          text: textToSend,
-          store_id: editingOrder.store_id
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setChatMessages(prev => {
-           if (prev.find(m => m.id === data.message.id)) return prev;
-           return [...prev, data.message];
-        });
-        if (!customText) setNewWaMsg('');
-      } else {
-        alert(data.error || 'Failed to send message');
-      }
-    } catch (err) {
-      alert('Network error sending WhatsApp message');
-    } finally {
-      setSendingWaMsg(false);
-    }
-  }, [apiBase, editingOrder, newWaMsg]);
-
-  const handleFileAttach = useCallback(async (e) => {
-    const file = e.target?.files?.[0];
-    if (!file) return;
-
-    if (file.size > 16 * 1024 * 1024) {
-      alert('⚠️ File size exceeds the 16MB limit. Please compress your file or upload a smaller one.');
-      if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!orderId) {
+      lastHydratedItemsSigRef.current = '';
       return;
     }
 
-    const formData = new FormData();
-    formData.append('media', file);
-    formData.append('caption', newWaMsg);
+    const items = parseLineItemsSafe(editingOrder);
+    const discount = extractDiscountSafe(editingOrder);
+    const shipping = Number(editingOrder.shipping_fee) || 0;
+    const notes = editingOrder.cs_notes || '';
 
-    setIsUploadingMedia(true);
-    setSendingWaMsg(true);
-    try {
-      const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/upload-media`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-        },
-        body: formData
-      });
-      const data = await res.json();
-      if (data.success) {
-        setNewWaMsg('');
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        
-        const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-        });
-        const chatData = await chatRes.json();
-        if (chatData.messages) setChatMessages(chatData.messages);
-      } else {
-        alert(data.error || 'Upload failed');
-      }
-    } catch (err) {
-      alert('Network error uploading file');
-    } finally {
-      setIsUploadingMedia(false);
-      setSendingWaMsg(false);
-    }
-  }, [apiBase, editingOrder, newWaMsg]);
+    itemsHook.setLocalItems(items);
+    saveHook.setLocalNotes(notes);
+    saveHook.setLocalDiscount(discount);
+    saveHook.setLocalShippingFee(shipping);
+    saveHook.setBaselineSnapshot(items, discount, shipping, notes);
+    saveHook.setMapsVerifyResult(null);
+    lastHydratedItemsSigRef.current = JSON.stringify(items);
 
-  // Effect: Fetch dependencies when order opens
-  useEffect(() => {
-    if (editingOrder) {
-      const items = editingOrder.line_items_parsed || (typeof editingOrder.line_items === 'string' ? JSON.parse(editingOrder.line_items || '[]') : (editingOrder.line_items || []));
-      itemsHook.setLocalItems(items);
-      saveHook.setLocalNotes(editingOrder.cs_notes || '');
-      
-      let d = 0;
-      if (editingOrder.notes) {
-        try {
-          const parsedNotes = JSON.parse(editingOrder.notes);
-          d = parsedNotes.cs_discount || editingOrder.discount_amount || 0;
-        } catch(e) {
-          d = editingOrder.discount_amount || 0;
+    const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+    const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+    let cancelled = false;
+
+    // Customer Intelligence
+    saveHook.setCustIntelLoading(true);
+    fetch(`${apiBase}/api/orders/${orderId}/customer-intelligence`, { headers: authHeaders })
+      .then(r => r.json())
+      .then(data => {
+        if (!cancelled) {
+          saveHook.setCustIntel(data || { total: 0, delivered: 0, returned: 0, rto_rate: 0, blacklist: false });
+          saveHook.setCustIntelLoading(false);
         }
-      } else {
-        d = editingOrder.discount_amount || 0;
-      }
-      saveHook.setLocalDiscount(d);
-      saveHook.setLocalShippingFee(editingOrder.shipping_fee || 0);
-
-      // Fetch Customer Intelligence
-      saveHook.setCustIntelLoading(true);
-      fetch(`${apiBase}/api/orders/${editingOrder.id}/customer-intelligence`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       })
-        .then(r => r.json())
-        .then(data => { saveHook.setCustIntel(data); saveHook.setCustIntelLoading(false); })
-        .catch(() => saveHook.setCustIntelLoading(false));
+      .catch(() => { if (!cancelled) saveHook.setCustIntelLoading(false); });
 
-      // Fetch Master Products
-      const storeId = editingOrder.store_id || localStorage.getItem('activeStoreId') || 1;
-      fetch(`${apiBase}/api/cost-manager?store_id=${storeId}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+    // Master Product Costs & Inventory
+    fetch(`${apiBase}/api/cost-manager?store_id=${storeId}`, { headers: authHeaders })
+      .then(r => r.json())
+      .then(data => {
+        if (!cancelled) itemsHook.setMasterProducts(Array.isArray(data) ? data : []);
       })
-        .then(r => r.json())
-        .then(data => itemsHook.setMasterProducts(Array.isArray(data) ? data : []))
-        .catch(() => {});
+      .catch(() => {});
 
-      // Fetch Live Tracking
-      if (editingOrder.tracking_number || editingOrder.tracking_slug) {
-        saveHook.setTrackingLoading(true);
-        const slug = editingOrder.tracking_slug || 'tr_mock_slug';
-        fetch(`${apiBase}/api/customer-success/tracking/${slug}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-        })
-          .then(r => r.json())
-          .then(data => { saveHook.setTrackingData(data); saveHook.setTrackingLoading(false); })
-          .catch(() => saveHook.setTrackingLoading(false));
-      }
-    }
-  }, [editingOrder, apiBase]);
-
-  // Effect: WhatsApp Chat websocket and polling
-  useEffect(() => {
-    if (editingOrder && activeTab === 'whatsapp_chat') {
-      setChatLoading(true);
-      const orderId = editingOrder.id;
-      const token = localStorage.getItem('trace_token') || '';
-
-      let cleaned = editingOrder.phone?.replace(/\D/g, '');
-      if (cleaned?.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-      else if (!cleaned?.startsWith('92') && cleaned?.length === 10) cleaned = '92' + cleaned;
-
-      const loadMessages = () =>
-        fetch(`${apiBase}/api/whatsapp-governance/chat/${orderId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-          .then(r => r.json())
-          .then(data => {
-            if (data.messages) {
-              setChatMessages(data.messages);
-            }
-            setChatLoading(false);
-          })
-          .catch(() => setChatLoading(false));
-
-      loadMessages();
-      fetchQuickReplies();
-      fetchQuickPills();
-
-      const pollInterval = setInterval(() => {
-        fetch(`${apiBase}/api/whatsapp-governance/chat/${orderId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-          .then(r => r.json())
-          .then(data => {
-            if (data.messages) {
-              setChatMessages(data.messages);
-            }
-          })
-          .catch(() => {});
-
-        fetch(`${apiBase}/api/whatsapp-governance/status`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-          .then(r => r.json())
-          .then(data => {
-            if (data.status) setBotStatus(data.status);
-          })
-          .catch(() => setBotStatus('DISCONNECTED'));
-      }, 3000);
-
-      let socket = null;
+    // Parse any cached DB tracking_history immediately
+    let dbHist = [];
+    if (editingOrder.tracking_history) {
       try {
-        const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsHost = window.location.hostname === 'localhost' ? 'localhost:3001' : window.location.host;
-        socket = new WebSocket(`${wsProto}//${wsHost}/?token=${token}`);
-
-        socket.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.event === 'typing' && data.data.phone === cleaned) {
-              setIsTyping(data.data.isTyping);
-              clearTimeout(window.typingTimeout);
-              if (data.data.isTyping) {
-                window.typingTimeout = setTimeout(() => setIsTyping(false), 5000);
-              }
-            } else if (data.event === 'message') {
-              if (data.data.order_id == orderId || data.data.message?.phone === cleaned) {
-                setChatMessages(prev => {
-                  const newMsg = data.data.message;
-                  if (prev.find(m => m.id === newMsg.id || (m.message_id && m.message_id === newMsg.message_id))) return prev;
-                  return [...prev, newMsg];
-                });
-                setIsTyping(false);
-              }
-            }
-          } catch (err) {}
-        };
-      } catch (e) {}
-
-      return () => {
-        clearInterval(pollInterval);
-        if (socket) socket.close();
-        clearTimeout(window.typingTimeout);
-      };
+        let parsed = typeof editingOrder.tracking_history === 'string'
+          ? JSON.parse(editingOrder.tracking_history)
+          : editingOrder.tracking_history;
+        if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+        if (Array.isArray(parsed)) dbHist = parsed;
+      } catch (_) {}
     }
-  }, [editingOrder, activeTab, apiBase, fetchQuickReplies, fetchQuickPills]);
+    saveHook.setLiveHistory(dbHist);
+    saveHook.setTrackingData(null);
+
+    // Fetch real public tracking milestones ONLY if a real tracking_slug exists (never mock slug!)
+    if (trackingSlug && trackingSlug !== 'tr_mock_slug') {
+      fetch(`${apiBase}/api/customer-success/tracking/${encodeURIComponent(trackingSlug)}`, { headers: authHeaders })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!cancelled && data && !data.error) saveHook.setTrackingData(data);
+        })
+        .catch(() => {});
+    }
+
+    // Fetch live multi-courier tracking timeline when tracking_number exists
+    if (trackingNumber) {
+      refreshLiveTracking(trackingNumber, storeId);
+    }
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, storeId, apiBase]);
+
+  // 2. When fetchOrderDetails completes async Shopify hydration (adds images/fresh line items), sync ONLY if user hasn't edited yet
+  useEffect(() => {
+    if (!orderId || saveHook.isDirty) return;
+    const freshItems = parseLineItemsSafe(editingOrder);
+    const sig = JSON.stringify(freshItems);
+    if (freshItems.length > 0 && sig !== lastHydratedItemsSigRef.current) {
+      lastHydratedItemsSigRef.current = sig;
+      itemsHook.setLocalItems(freshItems);
+      saveHook.setBaselineSnapshot(freshItems, saveHook.localDiscount, saveHook.localShippingFee, saveHook.localNotes);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingOrder?.line_items, orderId]);
 
   return {
-    getMediaUrlWithToken,
     activeTab,
     setActiveTab,
     localItems: itemsHook.localItems,
@@ -539,64 +200,27 @@ export default function useOrderManagement({
     localNotes: saveHook.localNotes,
     setLocalNotes: saveHook.setLocalNotes,
     isSavingCS: saveHook.isSavingCS,
+    isDirty: saveHook.isDirty,
     custIntel: saveHook.custIntel,
     custIntelLoading: saveHook.custIntelLoading,
-    waSimulating: saveHook.waSimulating,
-    sendingImages: saveHook.sendingImages,
     masterProducts: itemsHook.masterProducts,
     showProductSearch: itemsHook.showProductSearch,
     setShowProductSearch: itemsHook.setShowProductSearch,
     productSearchQuery: itemsHook.productSearchQuery,
     setProductSearchQuery: itemsHook.setProductSearchQuery,
     bookingCourier: saveHook.bookingCourier,
+    actionBusy: saveHook.actionBusy,
     trackingData: saveHook.trackingData,
+    liveHistory: saveHook.liveHistory,
     trackingLoading: saveHook.trackingLoading,
-    chatMessages,
-    setChatMessages,
-    chatLoading,
-    botStatus,
-    newWaMsg,
-    setNewWaMsg,
-    sendingWaMsg,
-    isTyping,
-    fileInputRef,
-    quickReplies,
-    showQuickReplyPanel,
-    setShowQuickReplyPanel,
-    quickReplyTitle,
-    setQuickReplyTitle,
-    quickReplyCaption,
-    setQuickReplyCaption,
-    quickReplyMedia,
-    setQuickReplyMedia,
-    showTemplateCreator,
-    setShowTemplateCreator,
-    isUploadingMedia,
-    quickPills,
-    showPillsManager,
-    setShowPillsManager,
-    newPillText,
-    setNewPillText,
-    isRecording,
-    recordingSeconds,
-    chatSearchQuery,
-    setChatSearchQuery,
-    sendingInvoice: saveHook.sendingInvoice,
-    handleCreateQuickPill,
-    handleDeleteQuickPill,
-    startRecording,
-    stopRecording,
-    handleSendInvoice: saveHook.handleSendInvoice,
-    handleSendQuickReply,
-    handleCreateQuickReply,
-    handleDeleteQuickReply,
-    handleSendWaMessage,
-    handleFileAttach,
+    refreshLiveTracking,
     handleCSUpdate: saveHook.handleCSUpdate,
-    handleWaSimulate: saveHook.handleWaSimulate,
-    handleSendItemImages: saveHook.handleSendItemImages,
     handleAddressCleanse: saveHook.handleAddressCleanse,
     handleBookCourier: saveHook.handleBookCourier,
+    handleConfirmOrder: saveHook.handleConfirmOrder,
+    handleRevertConfirm: saveHook.handleRevertConfirm,
+    handleCancelBooking: saveHook.handleCancelBooking,
+    handleCancelOrder: saveHook.handleCancelOrder,
     mapsVerifyLoading: saveHook.mapsVerifyLoading,
     mapsVerifyResult: saveHook.mapsVerifyResult,
     setMapsVerifyResult: saveHook.setMapsVerifyResult,
@@ -605,6 +229,8 @@ export default function useOrderManagement({
     liveSubtotal: itemsHook.liveSubtotal,
     liveTotal: saveHook.liveTotal,
     totalOrderCost: saveHook.totalOrderCost,
+    zeroCostCount: saveHook.zeroCostCount,
+    effectiveCourierExpense: saveHook.effectiveCourierExpense,
     netProfit: saveHook.netProfit,
     profitMargin: saveHook.profitMargin,
     filteredGroups: itemsHook.filteredGroups,
