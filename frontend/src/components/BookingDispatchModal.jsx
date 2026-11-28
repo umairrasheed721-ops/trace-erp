@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   COURIER_REMARK_PRESETS,
   hasRemarkPhrase,
@@ -6,7 +6,293 @@ import {
   appendRemarkPhrase,
   detectSafeNoteHints,
   formatPickupOptionLabel,
+  rankRelevantCities,
 } from '../utils/courierBookingPresets';
+
+/**
+ * Floating Searchable City Selector for a specific Courier (PostEx / Instaworld):
+ * - Always opens cleanly above scrollable containers (position: fixed)
+ * - Shows "Closest Relevant Matches" at the top (handles "Dina Distt Jhelum" -> Dina / Jhelum, "Mirwah Gorchani" -> Mirpur Khas / Mirpur)
+ * - Full searchable courier operational cities list below
+ */
+function SmartCitySelect({
+  value,
+  onChange,
+  validCities = [],
+  validCitySet,
+  courierLabel = 'PostEx',
+  disabled = false,
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 250 });
+  const triggerRef = useRef(null);
+  const popoverRef = useRef(null);
+  const searchInputRef = useRef(null);
+
+  const cityTrim = String(value || '').trim();
+  const isExact = validCitySet.size > 0 && cityTrim !== '' && validCitySet.has(cityTrim.toLowerCase());
+
+  const updatePos = () => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const dropHeight = 290;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const top = spaceBelow < dropHeight && rect.top > dropHeight
+      ? Math.max(8, rect.top - dropHeight - 4)
+      : Math.min(window.innerHeight - 80, rect.bottom + 4);
+    const width = Math.max(245, rect.width + 50);
+    const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
+    setPos({ top, left, width });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    updatePos();
+    const onOutside = (e) => {
+      if (
+        popoverRef.current && !popoverRef.current.contains(e.target) &&
+        triggerRef.current && !triggerRef.current.contains(e.target)
+      ) {
+        setOpen(false);
+      }
+    };
+    const onEsc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onOutside);
+    document.addEventListener('keydown', onEsc);
+    window.addEventListener('resize', updatePos);
+    setTimeout(() => searchInputRef.current?.focus(), 20);
+    return () => {
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('keydown', onEsc);
+      window.removeEventListener('resize', updatePos);
+    };
+  }, [open]);
+
+  const queryForRelevance = search.trim() || cityTrim;
+  const closestMatches = useMemo(
+    () => rankRelevantCities(queryForRelevance, validCities, 6),
+    [queryForRelevance, validCities]
+  );
+
+  const filteredAll = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const closestSet = new Set(closestMatches.map(c => c.toLowerCase()));
+    return validCities.filter((c) => {
+      const cl = c.toLowerCase();
+      if (q && !cl.includes(q)) return false;
+      return !closestSet.has(cl);
+    });
+  }, [validCities, search, closestMatches]);
+
+  const selectCity = (cityName) => {
+    onChange(cityName);
+    setSearch('');
+    setOpen(false);
+  };
+
+  return (
+    <div ref={triggerRef} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+      <span style={{ fontSize: '0.72rem' }}>📍</span>
+      <div style={{ display: 'inline-flex', alignItems: 'center', position: 'relative' }}>
+        <input
+          type="text"
+          disabled={disabled}
+          value={value}
+          onFocus={() => { if (!disabled) { setSearch(''); setOpen(true); } }}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setSearch(e.target.value);
+            if (!open) setOpen(true);
+          }}
+          placeholder="Select or type city..."
+          title={
+            !cityTrim
+              ? 'City is required before booking'
+              : isExact
+                ? `Valid ${courierLabel} city`
+                : `Click to pick closest valid ${courierLabel} city`
+          }
+          className="form-input"
+          style={{
+            width: 175,
+            fontSize: '0.76rem',
+            fontWeight: 700,
+            padding: '3px 24px 3px 8px',
+            borderRadius: 7,
+            border: `1px solid ${
+              !cityTrim
+                ? '#ef4444'
+                : isExact
+                  ? 'rgba(16,185,129,0.55)'
+                  : validCitySet.size > 0
+                    ? 'rgba(245,158,11,0.65)'
+                    : 'var(--border-bright)'
+            }`,
+            background: !cityTrim
+              ? 'rgba(239,68,68,0.08)'
+              : isExact
+                ? 'rgba(16,185,129,0.08)'
+                : 'var(--bg-elevated)',
+          }}
+        />
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => { if (!disabled) { setSearch(''); setOpen(prev => !prev); } }}
+          title={`Browse all ${validCities.length} ${courierLabel} cities`}
+          style={{
+            position: 'absolute',
+            right: 2,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-secondary)',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            fontSize: '0.68rem',
+            padding: '2px 5px',
+          }}
+        >
+          ▾
+        </button>
+      </div>
+
+      {validCitySet.size > 0 && cityTrim !== '' && (
+        <span
+          title={isExact ? `Valid ${courierLabel} city` : `Not an exact ${courierLabel} city — click dropdown for closest matches`}
+          style={{ fontSize: '0.72rem', fontWeight: 800, color: isExact ? '#059669' : '#d97706' }}
+        >
+          {isExact ? '✓' : '⚠️'}
+        </span>
+      )}
+
+      {open && (
+        <div
+          ref={popoverRef}
+          style={{
+            position: 'fixed',
+            top: pos.top,
+            left: pos.left,
+            width: pos.width,
+            maxHeight: 290,
+            zIndex: 10099,
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-bright)',
+            borderRadius: 11,
+            boxShadow: '0 14px 36px rgba(0,0,0,0.28)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Search box inside dropdown */}
+          <div style={{ padding: '7px 8px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Search ${courierLabel} cities (${validCities.length})...`}
+              className="form-input"
+              style={{ width: '100%', fontSize: '0.75rem', padding: '4px 8px' }}
+            />
+          </div>
+
+          <div style={{ overflowY: 'auto', flex: 1, padding: '4px 0' }}>
+            {closestMatches.length > 0 && (
+              <div>
+                <div style={{
+                  padding: '4px 10px',
+                  fontSize: '0.65rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: '#6366f1',
+                  background: 'rgba(99,102,241,0.06)',
+                }}>
+                  ✨ Closest Relevant ({courierLabel})
+                </div>
+                {closestMatches.map((c) => {
+                  const selected = c.toLowerCase() === cityTrim.toLowerCase();
+                  return (
+                    <button
+                      key={`rel-${c}`}
+                      type="button"
+                      onClick={() => selectCity(c)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '6px 11px',
+                        border: 'none',
+                        background: selected ? 'rgba(16,185,129,0.14)' : 'transparent',
+                        color: selected ? '#059669' : 'var(--text-primary)',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span>{c}</span>
+                      <span style={{ fontSize: '0.66rem', color: selected ? '#059669' : '#6366f1' }}>
+                        {selected ? '✓ Selected' : 'Suggested'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{
+              padding: '4px 10px',
+              fontSize: '0.65rem',
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              color: 'var(--text-muted)',
+              borderTop: closestMatches.length ? '1px solid var(--border)' : 'none',
+              marginTop: closestMatches.length ? 2 : 0,
+            }}>
+              📋 All {courierLabel} Cities ({filteredAll.length})
+            </div>
+
+            {filteredAll.length === 0 && closestMatches.length === 0 ? (
+              <div style={{ padding: '12px 10px', fontSize: '0.74rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                No matching {courierLabel} cities found
+              </div>
+            ) : (
+              filteredAll.map((c) => {
+                const selected = c.toLowerCase() === cityTrim.toLowerCase();
+                return (
+                  <button
+                    key={`all-${c}`}
+                    type="button"
+                    onClick={() => selectCity(c)}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '5px 11px',
+                      border: 'none',
+                      background: selected ? 'rgba(16,185,129,0.12)' : 'transparent',
+                      color: selected ? '#059669' : 'var(--text-primary)',
+                      fontSize: '0.76rem',
+                      fontWeight: selected ? 700 : 500,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {c}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function getCourierMeta(courier) {
   if (courier === 'PostEx') {
@@ -101,11 +387,12 @@ export default function BookingDispatchModal({
       fetchLocations(false);
     }
 
-    // Load valid courier cities for inline autocomplete & validation
+    // Load valid operational cities for THIS specific courier (PostEx / Instaworld)
     const apiUrl = import.meta.env.VITE_API_URL || '';
     const token = localStorage.getItem('trace_token');
     const targetCourier = meta.isPostEx ? 'PostEx' : 'Instaworld';
-    fetch(`${apiUrl}/api/orders/logistics/cities?courier=${encodeURIComponent(targetCourier)}`, {
+    const storeQuery = storeId ? `&store_id=${encodeURIComponent(storeId)}` : '';
+    fetch(`${apiUrl}/api/orders/logistics/cities?courier=${encodeURIComponent(targetCourier)}${storeQuery}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then(r => (r.ok ? r.json() : []))
@@ -608,17 +895,11 @@ export default function BookingDispatchModal({
             )}
           </div>
 
-          <datalist id="booking-dispatch-cities">
-            {validCities.map((c) => <option key={c} value={c} />)}
-          </datalist>
-
           {visibleOrderStates.map(({ order, blocked }) => {
             const checked = !blocked && Boolean(includedIds[order.id]);
             const isPrepaid = ['paid', 'payment posted'].includes(String(order.payment_status || '').toLowerCase());
             const remVal = remarksById[order.id] || '';
             const cityVal = cityById[order.id] !== undefined ? cityById[order.id] : (order.city || '');
-            const cityTrim = String(cityVal || '').trim();
-            const isCityExact = validCitySet.size > 0 && cityTrim !== '' && validCitySet.has(cityTrim.toLowerCase());
             const isHardBlocked = blocked && blocked.code !== 'city';
             const safeHints = detectSafeNoteHints(order.notes, remVal);
 
@@ -636,7 +917,7 @@ export default function BookingDispatchModal({
                   gap: 7,
                 }}
               >
-                {/* Order Summary Row with Inline Editable City */}
+                {/* Order Summary Row with Smart Courier City Dropdown (Exact + Closest Relevant) */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <input
                     type="checkbox"
@@ -652,61 +933,19 @@ export default function BookingDispatchModal({
                     {order.customer_name || 'Customer'}
                   </span>
 
-                  {/* Inline Editable City with Courier Autocomplete + Live Validity Indicator */}
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ fontSize: '0.72rem' }}>📍</span>
-                    <input
-                      type="text"
-                      list="booking-dispatch-cities"
-                      disabled={isHardBlocked}
-                      value={cityVal}
-                      onChange={(e) => {
-                        const nextVal = e.target.value;
-                        setCityById(prev => ({ ...prev, [order.id]: nextVal }));
-                        if (nextVal.trim() !== '' && !getOrderBlockReason(order, nextVal)) {
-                          setIncludedIds(prev => ({ ...prev, [order.id]: true }));
-                        }
-                      }}
-                      placeholder="Enter delivery city..."
-                      title={
-                        !cityTrim
-                          ? 'City is required before booking'
-                          : isCityExact
-                            ? `Valid ${meta.isPostEx ? 'PostEx' : 'Courier'} city`
-                            : `Type or select an official ${meta.isPostEx ? 'PostEx' : 'Courier'} city`
+                  <SmartCitySelect
+                    value={cityVal}
+                    validCities={validCities}
+                    validCitySet={validCitySet}
+                    courierLabel={meta.isPostEx ? 'PostEx' : 'Instaworld'}
+                    disabled={isHardBlocked}
+                    onChange={(nextVal) => {
+                      setCityById(prev => ({ ...prev, [order.id]: nextVal }));
+                      if (String(nextVal || '').trim() !== '' && !getOrderBlockReason(order, nextVal)) {
+                        setIncludedIds(prev => ({ ...prev, [order.id]: true }));
                       }
-                      className="form-input"
-                      style={{
-                        width: 170,
-                        fontSize: '0.76rem',
-                        fontWeight: 700,
-                        padding: '3px 8px',
-                        borderRadius: 7,
-                        border: `1px solid ${
-                          !cityTrim
-                            ? '#ef4444'
-                            : isCityExact
-                              ? 'rgba(16,185,129,0.55)'
-                              : validCitySet.size > 0
-                                ? 'rgba(245,158,11,0.6)'
-                                : 'var(--border-bright)'
-                        }`,
-                        background: !cityTrim
-                          ? 'rgba(239,68,68,0.08)'
-                          : isCityExact
-                            ? 'rgba(16,185,129,0.08)'
-                            : 'var(--bg-elevated)',
-                      }}
-                    />
-                    {validCitySet.size > 0 && cityTrim !== '' && (
-                      <span
-                        title={isCityExact ? 'Valid courier city' : 'Non-standard city name — pick from dropdown suggestions'}
-                        style={{ fontSize: '0.72rem', fontWeight: 800, color: isCityExact ? '#059669' : '#d97706' }}
-                      >
-                        {isCityExact ? '✓' : '⚠️'}
-                      </span>
-                    )}
-                  </div>
+                    }}
+                  />
 
                   <span style={{
                     marginLeft: 'auto',

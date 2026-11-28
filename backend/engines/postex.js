@@ -101,31 +101,53 @@ async function createPostExOrder(store, order, options = {}) {
   });
 }
 
+const POSTEX_FALLBACK_CITIES = [
+  "Abbottabad","Adezai","Ali Bandar","Arifwala","Attock","Badin","Bahawalnagar",
+  "Bahawalpur","Bannu","Batkhela","Bela","Bhakkar","Bhalwal","Bhimber","Burewala",
+  "Chakwal","Chaman","Charsadda","Chichawatni","Chiniot","Chishtian","Dadu",
+  "Daska","Daud Khel","Dera Ghazi Khan","Dera Ismail Khan","Dina","Dinga","Dipalpur",
+  "Dunyapur","Faisalabad","Fateh Jang","Ghotki","Gilgit","Gojra","Gujar Khan",
+  "Gujranwala","Gujrat","Hafizabad","Haripur","Haroonabad","Hasilpur",
+  "Haveli Lakha","Hub","Hyderabad","Islamabad","Jacobabad","Jahania","Jampur",
+  "Jamshoro","Jaranwala","Jatoi","Jauharabad","Jhelum","Jhang","Kamalia","Kamber",
+  "Kamoke","Karachi","Kasur","Khairpur","Khanewal","Kharian","Khushab","Kohat",
+  "Kotli","Kotri","Lahore","Layyah","Larkana","Lalamusa","Lodhran","Loralai",
+  "Mandi Bahauddin","Mansehra","Mardan","Matiari","Mianwali","Mirpur","Mirpur Khas",
+  "Mirpur Mathelo","Multan","Muridke","Muzaffarabad","Muzaffargarh","Narowal",
+  "Nawabshah","Nowshera","Nankana Sahib","Okara","Pakpattan","Pasrur","Pattoki",
+  "Peshawar","Quetta","Rahim Yar Khan","Rawalpindi","Sadiqabad","Sahiwal","Sambrial",
+  "Sanghar","Sargodha","Sheikhupura","Shikarpur","Sialkot","Sillanwali","Sibi",
+  "Sukkur","Swabi","Talagang","Taxila","Toba Tek Singh","Turbat","Umerkot","Vehari",
+  "Wazirabad","Zhob"
+];
+
 /**
- * Returns the official PostEx city list (hardcoded from PostEx documentation)
- * PostEx does not have a public /get-cities API endpoint.
+ * Fetches official PostEx operational delivery cities live via v1/get-operational-city,
+ * gracefully falling back to the built-in PostEx Pakistan city list if no token or API timeout.
  */
 async function fetchPostExCities(token) {
-  // This is the authoritative list of cities supported by PostEx in Pakistan
-  return [
-    "Abbottabad","Adezai","Ali Bandar","Arifwala","Attock","Badin","Bahawalnagar",
-    "Bahawalpur","Bannu","Batkhela","Bela","Bhakkar","Bhalwal","Bhimber","Burewala",
-    "Chakwal","Chaman","Charsadda","Chichawatni","Chiniot","Chishtian","Dadu",
-    "Daska","Daud Khel","Dera Ghazi Khan","Dera Ismail Khan","Dina","Dinga","Dipalpur",
-    "Dunyapur","Faisalabad","Fateh Jang","Ghotki","Gilgit","Gojra","Gujar Khan",
-    "Gujranwala","Gujrat","Guranwala","Hafizabad","Haripur","Haroonabad","Hasilpur",
-    "Haveli Lakha","Hub","Hyderabad","Islamabad","Jacobabad","Jahania","Jampur",
-    "Jamshoro","Jaranwala","Jatoi","Jauharabad","Jhelum","Jhang","Kamalia","Kamber",
-    "Kamoke","Karachi","Kasur","Khairpur","Khanewal","Kharian","Khushab","Kohat",
-    "Kotli","Kotri","Lahore","Layyah","Larkana","Lalamusa","Lodhran","Loralai",
-    "Mandi Bahauddin","Mansehra","Mardan","Matiari","Mianwali","Mirpur","Mirpur Khas",
-    "Mirpur Mathelo","Multan","Muridke","Muzaffarabad","Muzaffargarh","Narowal",
-    "Nawabshah","Nowshera","Nankana Sahib","Okara","Pakpattan","Pasrur","Pattoki",
-    "Peshawar","Quetta","RawAim Yar Khan","Rawalpindi","Sadiqabad","Sahiwal","Sambrial",
-    "Sanghar","Sargodha","Sheikhupura","Shikarpur","Sialkot","Sillanwali","Sibi",
-    "Sukkur","Swabi","Talagang","Taxila","Toba Tek Singh","Turbat","Umerkot","Vehari",
-    "Wazirabad","Zhob"
-  ];
+  const cleanToken = String(token || '').trim();
+  if (cleanToken) {
+    try {
+      const res = await fetch('https://api.postex.pk/services/integration/api/order/v1/get-operational-city?operationalCityType=Delivery', {
+        method: 'GET',
+        headers: { token: cleanToken },
+        timeout: 6000,
+      });
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.dist) ? data.dist : [];
+      const names = [...new Set(
+        list
+          .filter(c => c && c.isDelivery !== false)
+          .map(c => String(c.operationalCityName || c.cityName || c.name || '').trim())
+          .filter(Boolean)
+      )].sort((a, b) => a.localeCompare(b));
+      if (names.length > 0) return names;
+    } catch (err) {
+      console.warn('⚠️ [PostEx Cities] Live fetch failed, using fallback list:', err.message);
+    }
+  }
+  return POSTEX_FALLBACK_CITIES;
 }
 
 /**
