@@ -329,15 +329,18 @@ module.exports = [
         }
       }
 
-      const rlCols = db.prepare('PRAGMA table_info(recon_logs)').all().map(c => c.name);
-      const rlAdditions = [
-        ['shopify_note_added', 'TEXT'],
-        ['cpr_reference', 'TEXT'],
-      ];
-      for (const [col, def] of rlAdditions) {
-        if (!rlCols.includes(col)) {
-          db.exec(`ALTER TABLE recon_logs ADD COLUMN ${col} ${def}`);
-          added++;
+      const hasReconLogs = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='recon_logs'").get();
+      if (hasReconLogs) {
+        const rlCols = db.prepare('PRAGMA table_info(recon_logs)').all().map(c => c.name);
+        const rlAdditions = [
+          ['shopify_note_added', 'TEXT'],
+          ['cpr_reference', 'TEXT'],
+        ];
+        for (const [col, def] of rlAdditions) {
+          if (!rlCols.includes(col)) {
+            db.exec(`ALTER TABLE recon_logs ADD COLUMN ${col} ${def}`);
+            added++;
+          }
         }
       }
       console.log(`✅ [Finance Migration #15] recon_sessions & recon_logs columns verified${added > 0 ? ` (${added} missing column(s) added)` : ''}.`);

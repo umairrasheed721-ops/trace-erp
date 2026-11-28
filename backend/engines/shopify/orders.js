@@ -561,7 +561,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
       }
     });
 
-    const sheetOrders = db.prepare('SELECT id, shopify_order_id, delivery_status, tracking_number, cost, courier_fee, cost_locked, courier_fee_locked FROM orders WHERE store_id = ?').all(storeId);
+    const sheetOrders = db.prepare('SELECT id, shopify_order_id, delivery_status, tracking_number, courier, cost, courier_fee, cost_locked, courier_fee_locked FROM orders WHERE store_id = ?').all(storeId);
     let costMap = {};
     const firstUpdateName = sheetOrders && sheetOrders[0] ? (shopifyMap[String(sheetOrders[0].shopify_order_id)]?.name || '') : '';
     if (syncCosts) {
@@ -735,6 +735,9 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         const shopifyDiscount = parseFloat(fresh.current_total_discounts || fresh.total_discounts || 0);
         const customerEmail = fresh.email || fresh.contact_email || fresh.customer?.email || '';
 
+        const existingValidCourier = row.courier && !/^\d+(\.\d+)?$/.test(String(row.courier).trim()) ? row.courier : '';
+        const resolvedCourier = courier || existingValidCourier;
+
         updateStmt.run(
           fullName, fullAddress, cleanCity, phone,
           finalPrice, activeCount, fresh.note || '',
@@ -742,7 +745,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           mapShopifyFinancialStatus(fresh.financial_status),
           row.cost_locked ? row.cost : (totalCost > 0 ? totalCost : (row.cost || 0)),
           tracking, 
-          row.courier_fee_locked ? row.courier_fee : courier, 
+          resolvedCourier, 
           fresh.tags || '',
           newDeliveryStatus, 
           shopifyShipping,

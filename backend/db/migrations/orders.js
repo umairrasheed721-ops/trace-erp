@@ -1612,6 +1612,56 @@ module.exports = [
     } catch (e) {
       console.error('Migration #59 failed:', e.message);
     }
+  },
+
+  // 60. Auto-heal orders where courier column was overwritten with numeric courier_fee (e.g. '200.0') by legacy refreshShopifyUpdates bug
+  (db) => {
+    try {
+      const corrupted = db.prepare(`
+        SELECT id, tracking_number, courier, tags
+        FROM orders
+        WHERE courier IS NOT NULL AND TRIM(courier) != ''
+          AND TRIM(courier) GLOB '[0-9]*'
+          AND TRIM(courier) NOT GLOB '*[^0-9.]*'
+      `).all();
+
+      if (corrupted.length === 0) return;
+
+      const detectCourierFromTracking = (tracking, tags = '') => {
+        const pvtTag = String(tags || '').split(',').find(t => t.trim().toUpperCase().startsWith('PVT:'));
+        if (pvtTag) return pvtTag.split(':')[1].trim();
+        const t = String(tracking || '').trim();
+        if (!t || t === '—') return '';
+        const lower = t.toLowerCase();
+        const selfKw = ['hand', 'self', 'rider', 'local', 'office', 'pickup', 'personal'];
+        if (selfKw.some(kw => lower.includes(kw)) || /^(?:\d{1,4})[./-]\d{1,2}[./-](?:\d{1,4})$/.test(lower)) {
+          return 'Self Delivery';
+        }
+        if (/^2\d{13}$/.test(t) || t.startsWith('28') || t.startsWith('21')) return 'PostEx';
+        if (t.toUpperCase().startsWith('LE')) return 'Leopards';
+        if (t.startsWith('1730')) return 'TCS';
+        if (t.toUpperCase().startsWith('PVT')) return 'Private Rider';
+        return 'Instaworld';
+      };
+
+      const upd = db.prepare('UPDATE orders SET courier = ? WHERE id = ?');
+      const healBatch = db.transaction((rows) => {
+        let count = 0;
+        for (const r of rows) {
+          const fixed = detectCourierFromTracking(r.tracking_number, r.tags);
+          upd.run(fixed, r.id);
+          count++;
+        }
+        return count;
+      });
+
+      const healed = healBatch(corrupted);
+      if (healed > 0) {
+        console.log(`✅ [Migration #60] Auto-healed ${healed} orders with numeric courier_fee leaked into courier column.`);
+      }
+    } catch (e) {
+      console.error('Migration #60 failed:', e.message);
+    }
   }
 ];
 
