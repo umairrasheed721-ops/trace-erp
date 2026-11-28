@@ -188,9 +188,8 @@ router.post('/bulk-book-postex', async (req, res) => {
         const { allocateOrderFifoOnDispatch } = require('../../services/poLedgerService');
         allocateOrderFifoOnDispatch(id, req.user?.username || 'BulkPostEx');
       } catch (_) {}
-      try { require('../../services/readyTagSync').clearReadyTagAfterBooking(id); } catch (_) {}
-      
       try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx'); } catch(e) {}
+      try { require('../../services/readyTagSync').clearReadyTagAfterBooking(id); } catch (_) {}
       broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
       success++;
     } catch (e) { failed++; }

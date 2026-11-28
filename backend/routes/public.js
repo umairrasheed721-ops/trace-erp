@@ -808,16 +808,27 @@ router.post('/extension-tag-order', async (req, res) => {
       }
     }
 
-    // Update local DB tag list
+    // Update local DB tag list + immediate 2-way Ready to Book ⇄ Confirmed sync for untracked orders
     if (localOrder) {
       let currentTags = (localOrder.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+      const isReadyTag = String(tag || '').trim().toLowerCase() === 'ready to book';
+      const hasTracking = Boolean(localOrder.tracking_number && String(localOrder.tracking_number).trim() !== '' && String(localOrder.tracking_number).trim() !== '—');
+      const curStatusLower = String(localOrder.delivery_status || '').trim().toLowerCase();
+
       if (action === 'add') {
-        if (!currentTags.includes(tag)) currentTags.push(tag);
+        if (!currentTags.some(t => t.toLowerCase() === String(tag).trim().toLowerCase())) currentTags.push(tag);
       } else {
         currentTags = currentTags.filter(t => t.toLowerCase() !== tag.toLowerCase());
       }
       const newTagsStr = currentTags.join(', ');
-      db.db.prepare('UPDATE orders SET tags = ? WHERE id = ?').run(newTagsStr, localOrder.id);
+
+      if (isReadyTag && !hasTracking && action === 'add' && ['pending', ''].includes(curStatusLower)) {
+        db.db.prepare("UPDATE orders SET tags = ?, delivery_status = 'Confirmed', status_date = datetime('now') WHERE id = ?").run(newTagsStr, localOrder.id);
+      } else if (isReadyTag && !hasTracking && action === 'remove' && curStatusLower === 'confirmed') {
+        db.db.prepare("UPDATE orders SET tags = ?, delivery_status = 'Pending', status_date = datetime('now') WHERE id = ?").run(newTagsStr, localOrder.id);
+      } else {
+        db.db.prepare('UPDATE orders SET tags = ? WHERE id = ?').run(newTagsStr, localOrder.id);
+      }
       
       const { broadcast } = require('../sse');
       broadcast('order_updated', { storeId: localOrder.store_id, shopifyOrderId: localOrder.shopify_order_id });

@@ -199,15 +199,18 @@ function mergeOrderTagString(existingTags, tagName = READY_TO_BOOK_TAG, mode = '
   return { tags: next, changed: next.toLowerCase() !== prevNormalized.toLowerCase() };
 }
 
-async function updateShopifyOrderTag(store, shopifyOrderId, tagName = READY_TO_BOOK_TAG, mode = 'add') {
+async function updateShopifyOrderTag(store, shopifyOrderId, tagName = READY_TO_BOOK_TAG, mode = 'add', options = {}) {
   const { shop_domain, access_token } = store || {};
   if (!shop_domain || !access_token || access_token === 'PENDING' || !shopifyOrderId) {
     return { ok: false, skipped: true, error: 'Missing store token or shopify_order_id' };
   }
 
+  const checkFulfilled = Boolean(options?.onlyIfFulfilledOrCancelled) && mode === 'remove';
+
   try {
-    // 1. Fetch live tags first so we NEVER overwrite existing Shopify tags
-    const getUrl = `https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}.json?fields=id,tags`;
+    // 1. Fetch live tags (and fulfillment/cancel state when guarded) so we NEVER overwrite tags or strip unfulfilled orders
+    const fields = checkFulfilled ? 'id,tags,fulfillment_status,cancelled_at,financial_status,fulfillments' : 'id,tags';
+    const getUrl = `https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}.json?fields=${fields}`;
     const getRes = await fetch(getUrl, {
       headers: { 'X-Shopify-Access-Token': access_token },
       timeout: TAG_API_TIMEOUT,
@@ -216,7 +219,19 @@ async function updateShopifyOrderTag(store, shopifyOrderId, tagName = READY_TO_B
       return { ok: false, error: `Shopify GET tags HTTP ${getRes.status}` };
     }
     const getData = await getRes.json();
-    const currentTags = getData?.order?.tags || '';
+    const orderObj = getData?.order || {};
+    const currentTags = orderObj.tags || '';
+
+    if (checkFulfilled) {
+      const activeFulfillments = (orderObj.fulfillments || []).filter(f => String(f?.status || '').toLowerCase() !== 'cancelled');
+      const fulStatus = String(orderObj.fulfillment_status || '').toLowerCase();
+      const isFulfilled = fulStatus === 'fulfilled' || fulStatus === 'partial' || activeFulfillments.length > 0;
+      const isCancelled = Boolean(orderObj.cancelled_at) || String(orderObj.financial_status || '').toLowerCase() === 'voided';
+      if (!isFulfilled && !isCancelled) {
+        return { ok: true, changed: false, blockedUnfulfilled: true, tags: currentTags };
+      }
+    }
+
     const { tags: nextTags, changed } = mergeOrderTagString(currentTags, tagName, mode);
 
     if (!changed) {

@@ -816,7 +816,12 @@ module.exports = [
       const resBooked = db.prepare(`
         UPDATE orders
         SET delivery_status = 'Booked'
-        WHERE LOWER(delivery_status) IN ('confirmed', 'picked up')
+        WHERE LOWER(delivery_status) = 'picked up'
+           OR (
+             LOWER(delivery_status) = 'confirmed'
+             AND tracking_number IS NOT NULL
+             AND TRIM(tracking_number) NOT IN ('', '—')
+           )
       `).run();
 
       const resTransit = db.prepare(`
@@ -1450,6 +1455,37 @@ module.exports = [
       console.log('✅ [Migration #52] Email Remarketing tables & autopilot columns verified.');
     } catch (e) {
       console.error('Migration #52 failed:', e.message);
+    }
+  },
+
+  // 53. Auto-heal untracked unfulfilled orders corrupted to 'Booked' by legacy Migration #32 (Rule 12)
+  (db) => {
+    try {
+      const resToConfirmed = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Confirmed'
+        WHERE LOWER(delivery_status) = 'booked'
+          AND (tracking_number IS NULL OR TRIM(tracking_number) IN ('', '—'))
+          AND (courier IS NULL OR TRIM(courier) IN ('', '—', 'Unassigned'))
+          AND (courier_status IS NULL OR TRIM(courier_status) IN ('', '—', 'N/A'))
+          AND LOWER(COALESCE(tags, '')) LIKE '%ready to book%'
+      `).run();
+
+      const resToPending = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Pending'
+        WHERE LOWER(delivery_status) = 'booked'
+          AND (tracking_number IS NULL OR TRIM(tracking_number) IN ('', '—'))
+          AND (courier IS NULL OR TRIM(courier) IN ('', '—', 'Unassigned'))
+          AND (courier_status IS NULL OR TRIM(courier_status) IN ('', '—', 'N/A'))
+          AND LOWER(COALESCE(tags, '')) NOT LIKE '%ready to book%'
+      `).run();
+
+      if (resToConfirmed.changes > 0 || resToPending.changes > 0) {
+        console.log(`✅ [Migration #53] Auto-healed untracked 'Booked' orders corrupted by legacy Migration #32: ${resToConfirmed.changes} → Confirmed, ${resToPending.changes} → Pending.`);
+      }
+    } catch (e) {
+      console.error('Migration #53 failed:', e.message);
     }
   }
 ];

@@ -86,17 +86,31 @@ function extractTrackingFromOrder(order) {
   const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
   let tracking = (ful?.tracking_number || '').trim();
 
+  const isPlausibleTracking = (val) => {
+    const v = String(val || '').trim();
+    if (!v || v.length < 5 || v.length > 40) return false;
+    if (/^https?:\/\//i.test(v)) return false;
+    if (/^(n\/a|na|none|null|undefined|pending|false|true)$/i.test(v)) return false;
+    return /\d/.test(v);
+  };
+
   if (!tracking && order.note_attributes && Array.isArray(order.note_attributes)) {
-    const attr = order.note_attributes.find(a => 
-      a.name && (a.name.toLowerCase().includes('tracking') || a.name.toLowerCase().includes('hxs_courier_tracking'))
-    );
-    if (attr && attr.value) tracking = String(attr.value).trim();
+    const ALLOWED_TRACKING_ATTRS = new Set([
+      'tracking', 'tracking_number', 'tracking_no', 'tracking_id', 'tracking_code',
+      'courier_tracking', 'hxs_courier_tracking', 'cn_number', 'cn_no',
+      'postex_tracking', 'tcs_tracking', 'leopards_tracking', 'instaworld_tracking', 'trax_tracking'
+    ]);
+    const attr = order.note_attributes.find(a => {
+      const k = String(a?.name || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+      return ALLOWED_TRACKING_ATTRS.has(k) || k.includes('hxs_courier_tracking');
+    });
+    if (attr && isPlausibleTracking(attr.value)) tracking = String(attr.value).trim();
   }
 
   if (!tracking && order.note) {
-    const match = order.note.match(/Tracking\s*[:#-]?\s*([A-Za-z0-9]+)/i) ||
+    const match = order.note.match(/(?:^|[\s\n|])Tracking(?:\s*(?:Number|No\.?|#|ID))?\s*[:#-]\s*([A-Za-z0-9-]{5,30})/i) ||
                   order.note.match(/\b(2\d{13})\b/);
-    if (match && match[1]) {
+    if (match && isPlausibleTracking(match[1])) {
       tracking = match[1].trim();
     }
   }
@@ -773,7 +787,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
     // 🏷️ Ready to Book 2-way sync: auto-confirm tagged unfulfilled orders & strip tag from fulfilled/tracked ones
     try {
       const { reconcileStore } = require('../../services/readyTagSync');
-      reconcileStore(storeId);
+      reconcileStore(storeId, shopifyMap);
     } catch (tagErr) {
       console.warn('[ReadyTagSync Refresh Notice]:', tagErr.message);
     }
@@ -1033,7 +1047,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     // 🏷️ Ready to Book 2-way sync (webhook path): Shopify tag → ERP Confirmed, fulfilled → strip tag everywhere
     try {
       const { reconcileByShopifyId } = require('../../services/readyTagSync');
-      reconcileByShopifyId(storeId, shopifyOrderId);
+      reconcileByShopifyId(storeId, shopifyOrderId, order);
     } catch (tagErr) {
       console.warn('[ReadyTagSync Hybrid Notice]:', tagErr.message);
     }
@@ -1146,7 +1160,7 @@ async function syncSpecificOrders(store, shopifyIds) {
       );
       try {
         const { reconcileByShopifyId } = require('../../services/readyTagSync');
-        reconcileByShopifyId(store.id, fresh.id);
+        reconcileByShopifyId(store.id, fresh.id, fresh);
       } catch (_) {}
       if (newStatus === 'Cancelled' || (!fresh.fulfillment_status && !tracking && (fresh.fulfillments || []).some(f => f.status === 'cancelled'))) {
         try {

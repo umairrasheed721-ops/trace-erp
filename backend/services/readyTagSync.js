@@ -16,7 +16,7 @@ const tenantContext = require('../tenant-context');
 
 const READY_TAG_LOWER = 'ready to book';
 const FROZEN_STORE_DOMAINS = ['1i7tnb-bb.myshopify.com'];
-const ADVANCED_STATUSES = ['booked', 'in transit', 'delivered', 'returned', 'return received', 'cancelled'];
+const FINAL_REMOVAL_STATUSES = ['delivered', 'returned', 'return received', 'cancelled'];
 const SHOPIFY_WRITE_DELAY_MS = 550; // Throttle between Shopify tag writes (stays under 2 req/s REST bucket)
 const MAX_QUEUE_SIZE = 2000;        // Hard cap to prevent unbounded RAM growth
 const SHOPIFY_TIMEOUT_MS = 8000;    // Per-request Shopify API timeout
@@ -47,8 +47,29 @@ function isFrozenStore(shopDomain) {
   return FROZEN_STORE_DOMAINS.includes(lower(shopDomain));
 }
 
-function needsTagRemoval(row) {
-  return hasReadyTag(row.tags) && (isTracked(row.tracking_number) || ADVANCED_STATUSES.includes(lower(row.delivery_status)));
+function getShopifyOrderDoneState(shopifyOrder) {
+  if (!shopifyOrder || typeof shopifyOrder !== 'object') return null;
+  const activeFulfillments = (shopifyOrder.fulfillments || []).filter(f => lower(f?.status) !== 'cancelled');
+  const fulStatus = lower(shopifyOrder.fulfillment_status);
+  const isFulfilled = fulStatus === 'fulfilled' || fulStatus === 'partial' || activeFulfillments.length > 0;
+  const isCancelled = Boolean(shopifyOrder.cancelled_at) || lower(shopifyOrder.financial_status) === 'voided';
+  return { isFulfilled, isCancelled, isDone: isFulfilled || isCancelled };
+}
+
+/**
+ * STRICT Source-of-Truth Guard:
+ *  - When live Shopify order payload is available: ONLY remove if Shopify confirms fulfilled/partial or cancelled.
+ *    NEVER auto-remove "Ready to Book" on an unfulfilled, uncancelled Shopify order!
+ *  - When only local DB row is available: require an actual tracking_number OR a terminal final status
+ *    (Delivered / Returned / Return Received / Cancelled). NEVER remove for untracked 'Booked' rows.
+ */
+function needsTagRemoval(row, shopifyOrder = null) {
+  if (!row || !hasReadyTag(row.tags)) return false;
+  const shopifyState = getShopifyOrderDoneState(shopifyOrder);
+  if (shopifyState) {
+    return shopifyState.isDone;
+  }
+  return isTracked(row.tracking_number) || FINAL_REMOVAL_STATUSES.includes(lower(row.delivery_status));
 }
 
 function needsAutoConfirm(row) {
@@ -59,7 +80,7 @@ function needsAutoConfirm(row) {
 const removalQueue = new Map(); // key: `${tenant}:${storeId}:${shopifyOrderId}` → job
 let queueRunning = false;
 
-function enqueueShopifyRemoval(storeId, shopifyOrderId) {
+function enqueueShopifyRemoval(storeId, shopifyOrderId, { reason = 'sync', allowUnfulfilled = false } = {}) {
   if (!storeId || !shopifyOrderId) return false;
   const tenantId = tenantContext.getStore() || 'default';
   const key = `${tenantId}:${storeId}:${shopifyOrderId}`;
@@ -68,7 +89,7 @@ function enqueueShopifyRemoval(storeId, shopifyOrderId) {
     console.warn(`⚠️ [ReadyTagSync] Queue full (${MAX_QUEUE_SIZE}) — skipping ${shopifyOrderId}; next refresh will retry.`);
     return false;
   }
-  removalQueue.set(key, { tenantId, storeId, shopifyOrderId: String(shopifyOrderId) });
+  removalQueue.set(key, { tenantId, storeId, shopifyOrderId: String(shopifyOrderId), reason, allowUnfulfilled: Boolean(allowUnfulfilled) });
   if (!queueRunning) setImmediate(drainQueue);
   return true;
 }
@@ -85,9 +106,22 @@ async function drainQueue() {
         await tenantContext.run(job.tenantId, async () => {
           const store = db.prepare('SELECT id, shop_domain, access_token FROM stores WHERE id = ?').get(job.storeId);
           if (!store || isFrozenStore(store.shop_domain)) return;
-          const res = await updateShopifyOrderTag(store, job.shopifyOrderId, READY_TO_BOOK_TAG, 'remove');
-          if (res?.ok && res.changed) {
-            console.log(`🏷️ [ReadyTagSync] Removed "Ready to Book" on Shopify order ${job.shopifyOrderId} (${store.shop_domain})`);
+          const res = await updateShopifyOrderTag(
+            store,
+            job.shopifyOrderId,
+            READY_TO_BOOK_TAG,
+            'remove',
+            { onlyIfFulfilledOrCancelled: !job.allowUnfulfilled }
+          );
+          if (res?.blockedUnfulfilled) {
+            // Self-heal local tags back from Shopify so ERP stays 100% consistent with unfulfilled Shopify order
+            if (res.tags !== undefined) {
+              db.prepare('UPDATE orders SET tags = ? WHERE store_id = ? AND shopify_order_id = ?')
+                .run(res.tags, job.storeId, job.shopifyOrderId);
+            }
+            console.log(`🛡️ [ReadyTagSync] Blocked tag removal on UNFULFILLED Shopify order ${job.shopifyOrderId} (${store.shop_domain}, reason=${job.reason})`);
+          } else if (res?.ok && res.changed) {
+            console.log(`🏷️ [ReadyTagSync] Removed "Ready to Book" on Shopify order ${job.shopifyOrderId} (${store.shop_domain}, reason=${job.reason})`);
           } else if (!res?.ok && !res?.skipped) {
             console.warn(`⚠️ [ReadyTagSync] Shopify removal failed for ${job.shopifyOrderId}: ${res?.error}`);
           }
@@ -107,13 +141,18 @@ async function drainQueue() {
  * Reconcile a single local order row. Row must include:
  * id, store_id, shopify_order_id, tags, tracking_number, delivery_status
  */
-function reconcileOrderRow(row, { pushToShopify = true } = {}) {
+function reconcileOrderRow(row, { pushToShopify = true, shopifyOrder = null, reason = 'sync', allowUnfulfilled = false } = {}) {
   if (!row || !hasReadyTag(row.tags)) return { confirmed: false, removed: false };
 
-  if (needsTagRemoval(row)) {
+  if (needsTagRemoval(row, shopifyOrder)) {
     const nextTags = stripReadyTag(row.tags);
     db.prepare('UPDATE orders SET tags = ? WHERE id = ?').run(nextTags, row.id);
-    if (pushToShopify) enqueueShopifyRemoval(row.store_id, row.shopify_order_id);
+    if (pushToShopify) {
+      enqueueShopifyRemoval(row.store_id, row.shopify_order_id, {
+        reason: `${reason}:${lower(row.delivery_status) || 'unknown'}:${isTracked(row.tracking_number) ? 'tracked' : 'untracked'}`,
+        allowUnfulfilled
+      });
+    }
     return { confirmed: false, removed: true };
   }
 
@@ -132,11 +171,11 @@ function reconcileOrderRow(row, { pushToShopify = true } = {}) {
 
 const ROW_COLUMNS = 'id, store_id, shopify_order_id, tags, tracking_number, delivery_status';
 
-function reconcileByShopifyId(storeId, shopifyOrderId) {
+function reconcileByShopifyId(storeId, shopifyOrderId, shopifyOrder = null) {
   try {
     const row = db.prepare(`SELECT ${ROW_COLUMNS} FROM orders WHERE store_id = ? AND shopify_order_id = ?`)
       .get(storeId, String(shopifyOrderId));
-    return reconcileOrderRow(row);
+    return reconcileOrderRow(row, { shopifyOrder, reason: 'webhook_sync' });
   } catch (err) {
     console.warn('[ReadyTagSync] reconcileByShopifyId error:', err.message);
     return { confirmed: false, removed: false };
@@ -147,7 +186,8 @@ function reconcileByShopifyId(storeId, shopifyOrderId) {
 function clearReadyTagAfterBooking(orderId) {
   try {
     const row = db.prepare(`SELECT ${ROW_COLUMNS} FROM orders WHERE id = ?`).get(orderId);
-    return reconcileOrderRow(row);
+    if (!row || !isTracked(row.tracking_number)) return { confirmed: false, removed: false };
+    return reconcileOrderRow(row, { reason: 'erp_booking', allowUnfulfilled: true });
   } catch (err) {
     console.warn('[ReadyTagSync] clearReadyTagAfterBooking error:', err.message);
     return { confirmed: false, removed: false };
@@ -155,7 +195,7 @@ function clearReadyTagAfterBooking(orderId) {
 }
 
 /** Store-wide local reconcile (runs after every Shopify refresh). Only scans tagged rows. */
-function reconcileStore(storeId) {
+function reconcileStore(storeId, shopifyMap = null) {
   let confirmed = 0, removed = 0;
   try {
     const rows = db.prepare(`
@@ -163,7 +203,8 @@ function reconcileStore(storeId) {
       WHERE store_id = ? AND tags IS NOT NULL AND LOWER(tags) LIKE '%ready to book%'
     `).all(storeId);
     for (const row of rows) {
-      const r = reconcileOrderRow(row);
+      const shopifyOrder = shopifyMap ? shopifyMap[String(row.shopify_order_id)] || null : null;
+      const r = reconcileOrderRow(row, { shopifyOrder, reason: 'store_refresh' });
       if (r.confirmed) confirmed++;
       if (r.removed) removed++;
     }
@@ -237,7 +278,7 @@ async function scanStoreTaggedOrders(store, days) {
 
       const fulfillment = String(node.displayFulfillmentStatus || '').toUpperCase();
       const shopifyDone = Boolean(node.cancelledAt) || ['FULFILLED', 'PARTIALLY_FULFILLED', 'IN_PROGRESS', 'RESTOCKED'].includes(fulfillment);
-      const localDone = local ? (isTracked(local.tracking_number) || ADVANCED_STATUSES.includes(lower(local.delivery_status))) : false;
+      const localDone = local ? (isTracked(local.tracking_number) || FINAL_REMOVAL_STATUSES.includes(lower(local.delivery_status))) : false;
 
       const entry = { gid: node.id, shopifyOrderId: String(node.legacyResourceId), name: node.name, exactTags, local };
       if (shopifyDone || localDone) toRemove.push(entry);

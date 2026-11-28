@@ -116,13 +116,12 @@ async function processBulkBooking(storeId, ids, courier) {
         const { allocateOrderFifoOnDispatch } = require('../services/poLedgerService');
         allocateOrderFifoOnDispatch(id, 'BulkBook');
       } catch (fifoErr) { console.warn('[BulkBook FIFO Notice]:', fifoErr.message); }
-      try { require('../services/readyTagSync').clearReadyTagAfterBooking(id); } catch (_) {}
-      
       try {
         await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, dbCourier);
       } catch (shopifyErr) {
         console.warn(`⚠️ [BulkBook] Order ${order.ref_number || id} booked (${trackingNumber}) but Shopify fulfillment failed:`, shopifyErr.message);
       }
+      try { require('../services/readyTagSync').clearReadyTagAfterBooking(id); } catch (_) {}
       
       success++;
       broadcast('order_updated', { storeId, shopifyOrderId: order.shopify_order_id });
