@@ -53,8 +53,15 @@ if (!fs.existsSync(distPath)) {
 const distItems = fs.readdirSync(distPath);
 console.log(`📂 Compiled Assets Found: ${distItems.join(', ')}`);
 
-// 4. Relocate to Backend
+// 4. Relocate to Backend (preserve existing theme ZIP if running where ../trace-dynamic-theme.zip isn't present)
 const publicPath = path.join(__dirname, 'backend', 'public');
+const existingThemeZipBackup = path.join(__dirname, '.tmp_theme_zip_backup.zip');
+const existingThemeMetaBackup = path.join(__dirname, '.tmp_theme_meta_backup.json');
+const prevThemeZip = path.join(publicPath, 'downloads', 'trace-dynamic-theme.zip');
+const prevThemeMeta = path.join(publicPath, 'downloads', 'theme-meta.json');
+if (fs.existsSync(prevThemeZip)) fs.copyFileSync(prevThemeZip, existingThemeZipBackup);
+if (fs.existsSync(prevThemeMeta)) fs.copyFileSync(prevThemeMeta, existingThemeMetaBackup);
+
 console.log(`🚚 Relocating assets to: ${publicPath}`);
 
 if (fs.existsSync(publicPath)) {
@@ -128,6 +135,46 @@ if (fs.existsSync(extManifestPath)) {
     console.warn('⚠️ Failed to package Chrome Extension ZIP:', extErr.message);
   }
 }
+
+// 4.7. Sync Master Sanitized Shopify Theme ZIP into backend/public/downloads/ for 1-click multi-laptop download
+const masterThemeZipSrc = path.resolve(__dirname, '..', 'trace-dynamic-theme.zip');
+const downloadsDirTheme = path.join(publicPath, 'downloads');
+fs.mkdirSync(downloadsDirTheme, { recursive: true });
+const destThemeZip = path.join(downloadsDirTheme, 'trace-dynamic-theme.zip');
+const destThemeMeta = path.join(downloadsDirTheme, 'theme-meta.json');
+
+if (fs.existsSync(masterThemeZipSrc)) {
+  try {
+    fs.copyFileSync(masterThemeZipSrc, destThemeZip);
+    const stat = fs.statSync(destThemeZip);
+    let fileCount = 0;
+    try {
+      const listOut = execSync(`unzip -Z1 "${destThemeZip}"`, { stdio: 'pipe' }).toString();
+      fileCount = listOut.split('\n').filter(Boolean).length;
+    } catch (_) {}
+
+    const themeMeta = {
+      name: 'Trace Dynamic Shopify Theme (Sanitized Master)',
+      filename: 'trace-dynamic-theme.zip',
+      downloadUrl: '/downloads/trace-dynamic-theme.zip',
+      sizeBytes: stat.size,
+      fileCount,
+      sanitized: true,
+      updatedAt: stat.mtime.toISOString(),
+      builtAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(destThemeMeta, JSON.stringify(themeMeta, null, 2), 'utf8');
+    console.log(`🎨 Synced Master Theme ZIP (${(stat.size / (1024 * 1024)).toFixed(2)} MB, ${fileCount} files) -> /downloads/trace-dynamic-theme.zip`);
+  } catch (themeErr) {
+    console.warn('⚠️ Failed to sync Master Theme ZIP:', themeErr.message);
+  }
+} else if (fs.existsSync(existingThemeZipBackup)) {
+  fs.copyFileSync(existingThemeZipBackup, destThemeZip);
+  if (fs.existsSync(existingThemeMetaBackup)) fs.copyFileSync(existingThemeMetaBackup, destThemeMeta);
+  console.log('🎨 Preserved pre-bundled Master Theme ZIP in /downloads/trace-dynamic-theme.zip');
+}
+if (fs.existsSync(existingThemeZipBackup)) fs.unlinkSync(existingThemeZipBackup);
+if (fs.existsSync(existingThemeMetaBackup)) fs.unlinkSync(existingThemeMetaBackup);
 
 // 5. Final Sanity Check
 const finalAssetsPath = path.join(publicPath, 'assets');

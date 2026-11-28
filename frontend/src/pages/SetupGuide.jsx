@@ -171,6 +171,15 @@ export default function SetupGuide() {
     hostPermissions: ['https://admin.shopify.com/*', 'https://*.myshopify.com/*', 'https://trace-erp-production.up.railway.app/*', 'https://web.whatsapp.com/*'],
     builtAt: null,
   })
+  const [themeMeta, setThemeMeta] = useState({
+    name: 'Trace Dynamic Shopify Theme (Sanitized Master)',
+    filename: 'trace-dynamic-theme.zip',
+    downloadUrl: '/downloads/trace-dynamic-theme.zip',
+    sizeBytes: 1150000,
+    fileCount: 376,
+    sanitized: true,
+    updatedAt: null,
+  })
   const [busyKey, setBusyKey] = useState('')
 
   useEffect(() => {
@@ -184,6 +193,10 @@ export default function SetupGuide() {
     fetch('/downloads/extension-meta.json', { cache: 'no-store' })
       .then(r => (r.ok ? r.json() : null))
       .then(data => { if (data && data.version) setExtMeta(data) })
+      .catch(() => {})
+    fetch('/downloads/theme-meta.json', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (data && data.filename) setThemeMeta(data) })
       .catch(() => {})
   }, [])
   const [diagnoseResult, setDiagnoseResult] = useState(null)
@@ -773,6 +786,75 @@ redirect_urls = [
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'theme' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* 1-Click Server-Hosted Master Theme ZIP Download Card */}
+          <div style={{
+            ...cardStyle,
+            border: '1px solid rgba(124,58,237,0.35)',
+            background: 'linear-gradient(135deg, rgba(124,58,237,0.08) 0%, var(--bg-surface) 60%)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: '1 1 320px' }}>
+                <div style={{
+                  width: 52, height: 52, borderRadius: 14, flexShrink: 0,
+                  background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                  color: '#fff', fontSize: 25, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 6px 18px rgba(124,58,237,0.28)',
+                }}>🎨</div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 15.5, fontWeight: 900, color: 'var(--text-primary)' }}>
+                      {themeMeta.name}
+                    </span>
+                    <span style={{
+                      padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 800,
+                      background: 'rgba(16,185,129,0.14)', color: '#047857', border: '1px solid rgba(16,185,129,0.32)',
+                    }}>
+                      🛡️ New-Store Sanitized
+                    </span>
+                    <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                      {((themeMeta.sizeBytes || 1150000) / (1024 * 1024)).toFixed(2)} MB · {themeMeta.fileCount || 376} files
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12.2, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.45 }}>
+                    Kisi bhi laptop se seedha latest clean Shopify Theme ZIP download karein aur new store par upload kar dein — video/app refs already stripped!
+                  </div>
+                  {themeMeta.updatedAt && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                      Last packaged: <strong>{new Date(themeMeta.updatedAt).toLocaleString()}</strong> · Hosted directly on Railway
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <a
+                  href={themeMeta.downloadUrl || '/downloads/trace-dynamic-theme.zip'}
+                  download={themeMeta.filename || 'trace-dynamic-theme.zip'}
+                  style={{
+                    padding: '11px 20px', borderRadius: 11, textDecoration: 'none',
+                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    color: '#fff', fontSize: 13.5, fontWeight: 800,
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    boxShadow: '0 4px 14px rgba(124,58,237,0.32)',
+                  }}
+                >
+                  ⬇️ Download Theme ZIP
+                </a>
+                <button
+                  type="button"
+                  onClick={() => copyText(`${appOrigin}${themeMeta.downloadUrl || '/downloads/trace-dynamic-theme.zip'}`, 'Direct Theme ZIP URL')}
+                  style={{
+                    padding: '11px 14px', borderRadius: 11, cursor: 'pointer',
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                    color: 'var(--text-primary)', fontSize: 12.5, fontWeight: 700,
+                  }}
+                >
+                  📋 Copy Direct Link
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Active Multi-Store Theme Fleet Card */}
           <div style={cardStyle}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
