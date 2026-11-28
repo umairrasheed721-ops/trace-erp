@@ -608,6 +608,7 @@ exports.bookPostex = async (req, res) => {
     try {
       await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx');
       shopifyFulfilled = true;
+      db.prepare("UPDATE orders SET fulfillment_status = 'fulfilled' WHERE id = ?").run(req.params.id);
     } catch (shopifyErr) {
       shopifyError = shopifyErr.message;
       console.warn('PostEx Booked but Shopify Fulfillment Failed:', shopifyErr.message);
@@ -716,6 +717,7 @@ exports.bookInstaworld = async (req, res) => {
     try {
       await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'Instaworld');
       shopifyFulfilled = true;
+      db.prepare("UPDATE orders SET fulfillment_status = 'fulfilled' WHERE id = ?").run(req.params.id);
     } catch (shopifyErr) {
       shopifyError = shopifyErr.message;
       console.warn('Instaworld Booked but Shopify Fulfillment Failed:', shopifyErr.message);
@@ -796,6 +798,7 @@ async function cancelOrderBookingCore(orderId, actor = 'CancelBooking', options 
         courier = NULL,
         courier_status = NULL,
         booked_cod_amount = NULL,
+        fulfillment_status = 'unfulfilled',
         delivery_status = 'Confirmed',
         tags = ?,
         status_date = datetime('now')

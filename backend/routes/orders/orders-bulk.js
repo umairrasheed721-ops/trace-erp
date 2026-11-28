@@ -208,7 +208,10 @@ router.post('/bulk-book-postex', async (req, res) => {
         const { allocateOrderFifoOnDispatch } = require('../../services/poLedgerService');
         allocateOrderFifoOnDispatch(id, req.user?.username || 'BulkPostEx');
       } catch (_) {}
-      try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx'); } catch(e) {}
+      try {
+        await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx');
+        db.prepare("UPDATE orders SET fulfillment_status = 'fulfilled' WHERE id = ?").run(id);
+      } catch(e) {}
       try { require('../../services/readyTagSync').clearReadyTagAfterBooking(id); } catch (_) {}
       broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
       success++;
@@ -350,7 +353,10 @@ router.post('/bulk-book-instaworld', async (req, res) => {
       } catch (_) {}
       try { require('../../services/readyTagSync').clearReadyTagAfterBooking(id); } catch (_) {}
       
-      try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, courier_name); } catch(e) {}
+      try {
+        await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, courier_name);
+        db.prepare("UPDATE orders SET fulfillment_status = 'fulfilled' WHERE id = ?").run(id);
+      } catch(e) {}
       broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
       success++;
     } catch (e) { failed++; }

@@ -1928,7 +1928,8 @@ function getCommittedOrdersForSkus(storeId, options = {}) {
     if (pKey) titleMap.set(`${pKey}|||${vKey}`, r);
   }
 
-  // Scan open/unfulfilled non-cancelled orders for this store
+  // Scan ONLY truly open / pre-dispatch / unfulfilled orders (Pending or Confirmed, no tracking issued).
+  // Dispatched orders (Booked, In Transit, Delivered, Returned, Return Received) and Cancelled orders are NEVER committed.
   const openOrders = db.prepare(`
     SELECT id, ref_number, shopify_order_id, customer_name, phone, city,
            COALESCE(NULLIF(price, 0), NULLIF(total_price, 0), 0) AS order_price,
@@ -1936,10 +1937,11 @@ function getCommittedOrdersForSkus(storeId, options = {}) {
            courier, tracking_number, line_items
     FROM orders
     WHERE store_id = ?
-      AND LOWER(COALESCE(delivery_status, '')) NOT IN ('cancelled', 'delivered', 'returned', 'return received')
+      AND LOWER(COALESCE(delivery_status, 'pending')) IN ('', 'pending', 'confirmed')
+      AND (tracking_number IS NULL OR TRIM(tracking_number) IN ('', '—'))
       AND LOWER(COALESCE(fulfillment_status, '')) NOT IN ('fulfilled', 'restocked')
       AND COALESCE(line_items, '') != ''
-    ORDER BY (CASE WHEN LOWER(COALESCE(delivery_status, '')) IN ('pending', 'booked') THEN 0 ELSE 1 END) ASC, order_date DESC, id DESC
+    ORDER BY (CASE WHEN LOWER(COALESCE(delivery_status, '')) = 'confirmed' THEN 0 ELSE 1 END) ASC, order_date DESC, id DESC
     LIMIT 3000
   `).all(sid);
 

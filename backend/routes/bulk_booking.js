@@ -170,6 +170,7 @@ async function processBulkBooking(storeId, ids, courier, bookingOptions = {}) {
       } catch (fifoErr) { console.warn('[BulkBook FIFO Notice]:', fifoErr.message); }
       try {
         await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, dbCourier);
+        db.prepare("UPDATE orders SET fulfillment_status = 'fulfilled' WHERE id = ?").run(id);
       } catch (shopifyErr) {
         console.warn(`⚠️ [BulkBook] Order ${order.ref_number || id} booked (${trackingNumber}) but Shopify fulfillment failed:`, shopifyErr.message);
       }

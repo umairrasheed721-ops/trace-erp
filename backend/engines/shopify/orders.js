@@ -16,6 +16,14 @@ function mapShopifyFinancialStatus(financialStatus) {
   return 'Pending';
 }
 
+function normalizeShopifyFulfillmentStatus(order) {
+  const raw = String(order?.fulfillment_status || '').trim().toLowerCase();
+  if (raw === 'fulfilled' || raw === 'partial' || raw === 'restocked') return raw;
+  const activeFuls = (order?.fulfillments || []).filter(f => f && f.status !== 'cancelled');
+  if (activeFuls.length > 0) return 'fulfilled';
+  return 'unfulfilled';
+}
+
 function saveRawPayload(type, payload) {
   try {
     const filename = `${type}-${Date.now()}.json`;
@@ -281,8 +289,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     INSERT OR IGNORE INTO orders (
       store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
       address, city, price, tracking_number, items_count, notes, product_titles,
-      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount, tags
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?)
+      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount, tags, fulfillment_status
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?)
   `);
 
   const insertChunk = db.transaction((orders, costMap) => {
@@ -337,7 +345,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           require('../../tenant-context').getStore() || 'default',
           shopifyShipping,
           shopifyDiscount,
-          order.tags || ''
+          order.tags || '',
+          normalizeShopifyFulfillmentStatus(order)
         );
 
         if (status === 'Pending' && (addr.phone || customer.phone)) {
@@ -587,7 +596,8 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         END,
         shipping_fee = CASE WHEN is_cs_edited = 1 THEN shipping_fee ELSE ? END,
         discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END,
-        email = CASE WHEN email IS NULL OR email = '' THEN ? ELSE email END
+        email = CASE WHEN email IS NULL OR email = '' THEN ? ELSE email END,
+        fulfillment_status = ?
       WHERE id = ?
     `);
 
@@ -738,6 +748,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           shopifyShipping,
           shopifyDiscount,
           customerEmail,
+          normalizeShopifyFulfillmentStatus(fresh),
           row.id
         );
         count++;
@@ -920,6 +931,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         variant_title: li.variant_title,
         sku: li.sku,
         quantity: qty,
+        fulfillable_quantity: li.fulfillable_quantity,
         price: li.price,
         image_url: imageMap[String(li.variant_id)] || null
       };
@@ -966,6 +978,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
           shipping_fee = CASE WHEN is_cs_edited = 1 THEN shipping_fee ELSE ? END,
           discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END,
           email = CASE WHEN email IS NULL OR email = '' THEN ? ELSE email END,
+          fulfillment_status = ?,
           status_date = datetime('now')
         WHERE id = ?
       `).run(
@@ -975,6 +988,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         existing.cost_locked ? existing.cost : (totalCost > 0 ? totalCost : (existing.cost || 0)),
         tracking, courier, order.tags || '', newDeliveryStatus, lineItemsJson, shopifyShipping, shopifyDiscount,
         order.email || order.contact_email || customer.email || addr.email || '',
+        normalizeShopifyFulfillmentStatus(order),
         existing.id
       );
       const canReverseCancel = !['delivered', 'returned', 'return received'].includes(dbStatus);
@@ -998,8 +1012,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         INSERT INTO orders (
           store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
           address, city, price, tracking_number, items_count, notes, product_titles,
-          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount, email, tags
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?)
+          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount, email, tags, fulfillment_status
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?)
       `).run(
         storeId, String(order.id), order.name,
         fullName,
@@ -1016,7 +1030,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         shopifyShipping,
         shopifyDiscount,
         customerEmail,
-        order.tags || ''
+        order.tags || '',
+        normalizeShopifyFulfillmentStatus(order)
       );
 
       if (newDeliveryStatus === 'Pending' && (addr.phone || customer.phone)) {
@@ -1112,6 +1127,7 @@ async function syncSpecificOrders(store, shopifyIds) {
         END,
         shipping_fee = CASE WHEN is_cs_edited = 1 THEN shipping_fee ELSE ? END,
         discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END,
+        fulfillment_status = ?,
         status_date = datetime('now')
       WHERE shopify_order_id = ? AND store_id = ?
     `);
@@ -1156,6 +1172,7 @@ async function syncSpecificOrders(store, shopifyIds) {
         mapShopifyFinancialStatus(fresh.financial_status),
         tracking, courier, fresh.tags || '', newStatus,
         shopifyShipping, shopifyDiscount,
+        normalizeShopifyFulfillmentStatus(fresh),
         String(fresh.id), store.id
       );
       try {

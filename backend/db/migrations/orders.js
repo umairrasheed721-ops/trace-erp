@@ -1571,6 +1571,27 @@ module.exports = [
     } catch (e) {
       console.error('Migration #57 failed:', e.message);
     }
+  },
+
+  // 58. Auto-heal stale fulfillment_status='unfulfilled' on orders already dispatched/tracked (prevents In Transit / Booked orders showing as Committed)
+  (db) => {
+    try {
+      const resHealed = db.prepare(`
+        UPDATE orders
+        SET fulfillment_status = 'fulfilled'
+        WHERE LOWER(COALESCE(fulfillment_status, 'unfulfilled')) IN ('', 'unfulfilled')
+          AND (
+            (tracking_number IS NOT NULL AND TRIM(tracking_number) NOT IN ('', '—'))
+            OR LOWER(COALESCE(delivery_status, '')) IN ('booked', 'in transit', 'delivered', 'returned', 'return received')
+          )
+          AND LOWER(COALESCE(delivery_status, '')) != 'cancelled'
+      `).run();
+      if (resHealed.changes > 0) {
+        console.log(`✅ [Migration #58] Auto-healed ${resHealed.changes} dispatched/tracked orders from stale 'unfulfilled' → 'fulfilled'.`);
+      }
+    } catch (e) {
+      console.error('Migration #58 failed:', e.message);
+    }
   }
 ];
 
