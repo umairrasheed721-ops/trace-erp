@@ -1017,23 +1017,27 @@ const CommandTableRow = React.memo(({
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                 {tagList.map((tag, idx) => {
                   const isReady = tag.toLowerCase() === 'ready to book';
+                  const isAlreadyDispatched = Boolean(o.tracking_number) || ['booked', 'in transit', 'delivered', 'returned', 'return received', 'cancelled'].includes(s);
+                  const isStaleReady = isReady && isAlreadyDispatched;
                   return (
                     <span
                       key={idx}
                       className="badge"
                       style={{
-                        background: isReady ? 'rgba(236, 72, 153, 0.14)' : 'rgba(168, 85, 247, 0.12)',
-                        color: isReady ? '#db2777' : 'var(--brand)',
-                        border: `1px solid ${isReady ? 'rgba(236, 72, 153, 0.4)' : 'rgba(168, 85, 247, 0.3)'}`,
+                        background: isStaleReady ? 'var(--bg-elevated)' : isReady ? 'rgba(236, 72, 153, 0.14)' : 'rgba(168, 85, 247, 0.12)',
+                        color: isStaleReady ? 'var(--text-muted)' : isReady ? '#db2777' : 'var(--brand)',
+                        border: `1px solid ${isStaleReady ? 'var(--border)' : isReady ? 'rgba(236, 72, 153, 0.4)' : 'rgba(168, 85, 247, 0.3)'}`,
                         fontSize: '0.68rem',
                         fontWeight: 700,
                         padding: '1px 6px',
                         borderRadius: 6,
-                        whiteSpace: 'nowrap'
+                        whiteSpace: 'nowrap',
+                        textDecoration: isStaleReady ? 'line-through' : 'none',
+                        opacity: isStaleReady ? 0.6 : 1
                       }}
-                      title={`Shopify Tag: ${tag}`}
+                      title={isStaleReady ? 'Order already fulfilled/booked — Ready to Book tag queued for auto-cleanup' : `Shopify Tag: ${tag}`}
                     >
-                      {isReady ? '📋' : '🏷️'} {tag}
+                      {isStaleReady ? '🧹' : isReady ? '📋' : '🏷️'} {tag}
                     </span>
                   );
                 })}

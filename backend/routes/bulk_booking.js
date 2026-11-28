@@ -116,6 +116,7 @@ async function processBulkBooking(storeId, ids, courier) {
         const { allocateOrderFifoOnDispatch } = require('../services/poLedgerService');
         allocateOrderFifoOnDispatch(id, 'BulkBook');
       } catch (fifoErr) { console.warn('[BulkBook FIFO Notice]:', fifoErr.message); }
+      try { require('../services/readyTagSync').clearReadyTagAfterBooking(id); } catch (_) {}
       
       try {
         await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, dbCourier);

@@ -564,6 +564,9 @@ exports.bookPostex = async (req, res) => {
       allocateOrderFifoOnDispatch(req.params.id, req.user?.username || 'Booking');
     } catch (fifoErr) { console.warn('[bookPostex FIFO Notice]:', fifoErr.message); }
 
+    // 2c. Remove "Ready to Book" tag (local + Shopify queue) now that order is booked
+    try { require('../services/readyTagSync').clearReadyTagAfterBooking(req.params.id); } catch (_) {}
+
     // 3. Fulfill in Shopify (surface warning if Shopify fails)
     let shopifyFulfilled = false;
     let shopifyError = null;
@@ -630,6 +633,9 @@ exports.bookInstaworld = async (req, res) => {
       const { allocateOrderFifoOnDispatch } = require('../services/poLedgerService');
       allocateOrderFifoOnDispatch(req.params.id, req.user?.username || 'Booking');
     } catch (fifoErr) { console.warn('[bookInstaworld FIFO Notice]:', fifoErr.message); }
+
+    // 2c. Remove "Ready to Book" tag (local + Shopify queue) now that order is booked
+    try { require('../services/readyTagSync').clearReadyTagAfterBooking(req.params.id); } catch (_) {}
 
     // 3. Fulfill in Shopify (surface warning if Shopify fails)
     let shopifyFulfilled = false;

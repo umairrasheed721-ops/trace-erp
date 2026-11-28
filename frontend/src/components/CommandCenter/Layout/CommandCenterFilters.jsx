@@ -35,6 +35,7 @@ export default function CommandCenterFilters({
   sortMode, setSortMode,
   // ── Dialog triggers ───────────────────────────────────────────────────
   setShowSaveDialog, setShowColPicker, setShowNameDialog,
+  onOpenReadyTagCleanup, isAdmin,
   // ── KPI / Aging data (forwarded to CommandCenterStats) ────────────────
   syncProgress,
   kpi, deliveryRate, missingCostCount,
@@ -295,6 +296,15 @@ export default function CommandCenterFilters({
         <button className="btn btn-secondary btn-sm" onClick={() => setShowColPicker(true)}>
           ⚙️ Columns
         </button>
+        {isAdmin && onOpenReadyTagCleanup && (
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={onOpenReadyTagCleanup}
+            title='Scan & clean stale "Ready to Book" tags from already fulfilled Shopify orders'
+          >
+            🏷️ Clean Ready Tags
+          </button>
+        )}
         <button className="btn btn-brand btn-sm" onClick={() => setShowSaveDialog(true)} style={{ fontWeight: 800 }}>
           💾 Save Current View
         </button>

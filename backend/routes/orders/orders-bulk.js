@@ -188,6 +188,7 @@ router.post('/bulk-book-postex', async (req, res) => {
         const { allocateOrderFifoOnDispatch } = require('../../services/poLedgerService');
         allocateOrderFifoOnDispatch(id, req.user?.username || 'BulkPostEx');
       } catch (_) {}
+      try { require('../../services/readyTagSync').clearReadyTagAfterBooking(id); } catch (_) {}
       
       try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx'); } catch(e) {}
       broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
@@ -324,6 +325,7 @@ router.post('/bulk-book-instaworld', async (req, res) => {
         const { allocateOrderFifoOnDispatch } = require('../../services/poLedgerService');
         allocateOrderFifoOnDispatch(id, req.user?.username || 'BulkInstaworld');
       } catch (_) {}
+      try { require('../../services/readyTagSync').clearReadyTagAfterBooking(id); } catch (_) {}
       
       try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, courier_name); } catch(e) {}
       broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
@@ -331,6 +333,59 @@ router.post('/bulk-book-instaworld', async (req, res) => {
     } catch (e) { failed++; }
   }
   res.json({ success: true, count: success, failed });
+});
+
+// GET /api/orders/ready-tag/preview - Admin dry-run scan of Shopify "Ready to Book" tags on fulfilled/unfulfilled orders
+router.get('/ready-tag/preview', async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 90);
+    const scope = String(req.query.scope || 'current').toLowerCase();
+    const storeId = parseInt(req.query.store_id, 10) || null;
+    const storeIds = scope === 'all' ? null : (storeId ? [storeId] : null);
+
+    const { previewHistoricalCleanup } = require('../../services/readyTagSync');
+    const preview = await previewHistoricalCleanup({ storeIds, days });
+    res.json({ success: true, ...preview });
+  } catch (err) {
+    console.error('[ReadyTagPreview] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/orders/ready-tag/cleanup - Admin background cleanup removing stale "Ready to Book" tags on Shopify + ERP
+router.post('/ready-tag/cleanup', async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  try {
+    const days = Math.min(Math.max(parseInt(req.body?.days, 10) || 30, 1), 90);
+    const scope = String(req.body?.scope || 'current').toLowerCase();
+    const storeId = parseInt(req.body?.store_id, 10) || null;
+    const storeIds = scope === 'all' ? null : (storeId ? [storeId] : null);
+
+    const tenantContext = require('../../tenant-context');
+    const tenantId = tenantContext.getStore() || 'default';
+    const actor = req.user?.username || 'Admin';
+
+    res.status(202).json({
+      success: true,
+      message: `Background "Ready to Book" tag cleanup started (last ${days} days). Track progress in the top bar.`
+    });
+
+    setImmediate(() => {
+      tenantContext.run(tenantId, () => {
+        const { runHistoricalCleanup } = require('../../services/readyTagSync');
+        runHistoricalCleanup({ storeIds, days, actor }).catch(err => {
+          console.error('[ReadyTagCleanup] Background error:', err.message);
+        });
+      });
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

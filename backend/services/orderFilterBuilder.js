@@ -44,7 +44,7 @@ function getOrderFilters(req) {
     } else if (s.includes('[OVERDUE REPLACEMENT]')) {
       whereClauses.push("LOWER(COALESCE(o.tags, '')) LIKE '%replacement%' AND LOWER(COALESCE(o.tags, '')) NOT LIKE '%replacement-cleared%' AND LOWER(COALESCE(o.tags, '')) NOT LIKE '%replacement_cleared%' AND LOWER(COALESCE(o.delivery_status, '')) != 'cancelled' AND (julianday('now') - julianday(substr(o.order_date, 1, 10))) >= 7");
     } else if (s.includes('READY TO BOOK')) {
-      whereClauses.push("LOWER(o.delivery_status) = 'confirmed' AND (o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—')");
+      whereClauses.push("(LOWER(o.delivery_status) = 'confirmed' OR (LOWER(COALESCE(o.tags, '')) LIKE '%ready to book%' AND LOWER(COALESCE(o.delivery_status, 'pending')) IN ('pending', ''))) AND (o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—')");
     } else if (s.includes('NO TRACKING')) {
       whereClauses.push("(o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—') AND LOWER(o.delivery_status) != 'cancelled'");
     } else if (s.includes('UNPAID DELIVERED')) {

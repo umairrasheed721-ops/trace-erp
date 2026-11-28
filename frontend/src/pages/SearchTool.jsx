@@ -10,6 +10,7 @@ import EditOrderModal from '../components/EditOrderModal'
 import CustomerHistoryModal from '../components/CustomerHistoryModal'
 import { SaveViewModal, ColumnPickerModal, AgingConfigModal, NameRulesModal } from '../components/Modals'
 import OrderHistoryModal from '../components/OrderHistoryModal'
+import ReadyTagCleanupModal from '../components/ReadyTagCleanupModal'
 import ApiStatusBanner from '../components/ApiStatusBanner'
 import ErrorBoundary from '../components/ErrorBoundary'
 import CommandCenterHeader from '../components/CommandCenter/Layout/CommandCenterHeader'
@@ -35,6 +36,7 @@ function useDebounce(value, delay) {
 export default function SearchTool() {
   const { activeStoreId, addToast, user, isFocusMode, setSidebarCollapsed, token } = useApp()
   const [activeRowId, setActiveRowId] = useState(null)
+  const [showReadyTagCleanup, setShowReadyTagCleanup] = useState(false)
   const canSeeFinancials = user?.role === 'admin'
   const location = useLocation()
   const navigate = useNavigate()
@@ -1906,6 +1908,8 @@ export default function SearchTool() {
             setShowSaveDialog={setShowSaveDialog}
             setShowColPicker={setShowColPicker}
             setShowNameDialog={setShowNameDialog}
+            onOpenReadyTagCleanup={() => setShowReadyTagCleanup(true)}
+            isAdmin={user?.role === 'admin'}
             sortMode={sortMode}
             setSortMode={setSortMode}
             showKPIs={showKPIs}
@@ -2145,6 +2149,14 @@ export default function SearchTool() {
         nameSettings={nameSettings}
         setNameSettings={setNameSettings}
         onSave={() => saveNameSettings(nameSettings)}
+      />
+
+      <ReadyTagCleanupModal
+        show={showReadyTagCleanup}
+        onClose={() => setShowReadyTagCleanup(false)}
+        onCleanupStarted={() => {
+          setTimeout(() => fetchOrders({ isRefresh: true, wasProgrammatic: true }), 4000)
+        }}
       />
 
       {historyOrder && (

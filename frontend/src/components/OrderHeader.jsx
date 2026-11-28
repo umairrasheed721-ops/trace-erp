@@ -40,9 +40,13 @@ const OrderHeader = React.memo(({
   const erpStatus = editingOrder.delivery_status || 'Pending';
   const erpStyle = STATUS_BADGE_STYLES[erpStatus.toLowerCase()] || STATUS_BADGE_STYLES.pending;
 
-  const hasReadyTag = Boolean(editingOrder.confirmed_at) ||
-    erpStatus.toLowerCase() === 'confirmed' ||
-    String(editingOrder.tags || '').toLowerCase().includes('ready to book');
+  const erpLower = erpStatus.toLowerCase();
+  const isAdvancedOrFinal = ['booked', 'in transit', 'delivered', 'returned', 'return received', 'cancelled'].includes(erpLower);
+  const hasReadyTag = !isAdvancedOrFinal && !editingOrder.tracking_number && (
+    Boolean(editingOrder.confirmed_at) ||
+    erpLower === 'confirmed' ||
+    String(editingOrder.tags || '').toLowerCase().includes('ready to book')
+  );
 
   const shopDomain = editingOrder.shop_domain || activeStore?.shop_domain || '';
   const shopifyAdminUrl = shopDomain && editingOrder.shopify_order_id

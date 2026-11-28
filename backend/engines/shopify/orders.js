@@ -267,8 +267,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     INSERT OR IGNORE INTO orders (
       store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
       address, city, price, tracking_number, items_count, notes, product_titles,
-      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?)
+      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount, tags
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?)
   `);
 
   const insertChunk = db.transaction((orders, costMap) => {
@@ -322,7 +322,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           0.5, courier, totalCost, source, token,
           require('../../tenant-context').getStore() || 'default',
           shopifyShipping,
-          shopifyDiscount
+          shopifyDiscount,
+          order.tags || ''
         );
 
         if (status === 'Pending' && (addr.phone || customer.phone)) {
@@ -433,6 +434,14 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
       const linkHeader = res.headers.get('Link') || '';
       const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
       nextUrl = nextMatch ? nextMatch[1] : null;
+    }
+
+    // 🏷️ Ready to Book 2-way sync on newly fetched orders
+    try {
+      const { reconcileStore } = require('../../services/readyTagSync');
+      reconcileStore(storeId);
+    } catch (tagErr) {
+      console.warn('[ReadyTagSync Fetch Notice]:', tagErr.message);
     }
 
     console.log(`✅ Shopify Fetch [${shop_domain}]: Finished. Total added: ${totalAdded}`);
@@ -657,7 +666,8 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         } else if (shopifyFulfillmentCancelled) {
           newDeliveryStatus = 'Pending';
         } else if (fresh.fulfillment_status === 'fulfilled' || tracking) {
-          if (!newDeliveryStatus || newDeliveryStatus.toLowerCase() === 'pending') {
+          // Fulfilled/tracked orders must leave Pending AND Confirmed (Shopify-side booking)
+          if (!newDeliveryStatus || ['pending', 'confirmed'].includes(newDeliveryStatus.toLowerCase())) {
             newDeliveryStatus = 'Booked';
           }
         }
@@ -758,6 +768,14 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
       }
     } catch (recErr) {
       console.error('[Reconcile Error]:', recErr.message);
+    }
+
+    // 🏷️ Ready to Book 2-way sync: auto-confirm tagged unfulfilled orders & strip tag from fulfilled/tracked ones
+    try {
+      const { reconcileStore } = require('../../services/readyTagSync');
+      reconcileStore(storeId);
+    } catch (tagErr) {
+      console.warn('[ReadyTagSync Refresh Notice]:', tagErr.message);
     }
 
     db.prepare("UPDATE stores SET last_synced_at = datetime('now') WHERE id = ?").run(storeId);
@@ -873,7 +891,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       newDeliveryStatus = mappedStatus;
     } else if (shopifyFulfillmentCancelled) {
       newDeliveryStatus = 'Pending';
-    } else if (order.fulfillment_status === 'fulfilled' && ['pending', 'confirmed', ''].includes((newDeliveryStatus || '').toLowerCase())) {
+    } else if ((order.fulfillment_status === 'fulfilled' || tracking) && ['pending', 'confirmed', ''].includes((newDeliveryStatus || '').toLowerCase())) {
       newDeliveryStatus = 'Booked';
     }
 
@@ -966,8 +984,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         INSERT INTO orders (
           store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
           address, city, price, tracking_number, items_count, notes, product_titles,
-          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount, email
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?)
+          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount, email, tags
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?)
       `).run(
         storeId, String(order.id), order.name,
         fullName,
@@ -983,7 +1001,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         require('../../tenant-context').getStore() || 'default',
         shopifyShipping,
         shopifyDiscount,
-        customerEmail
+        customerEmail,
+        order.tags || ''
       );
 
       if (newDeliveryStatus === 'Pending' && (addr.phone || customer.phone)) {
@@ -1009,6 +1028,14 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
 
       console.log(`⚡ [Hybrid Sync] Inserted new order ${shopifyOrderId}`);
       try { require('../../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
+    }
+
+    // 🏷️ Ready to Book 2-way sync (webhook path): Shopify tag → ERP Confirmed, fulfilled → strip tag everywhere
+    try {
+      const { reconcileByShopifyId } = require('../../services/readyTagSync');
+      reconcileByShopifyId(storeId, shopifyOrderId);
+    } catch (tagErr) {
+      console.warn('[ReadyTagSync Hybrid Notice]:', tagErr.message);
     }
     return true;
   } catch (err) {
@@ -1063,6 +1090,7 @@ async function syncSpecificOrders(store, shopifyIds) {
         payment_status = CASE WHEN payment_status IN ('Paid', 'Payment Posted') THEN payment_status ELSE ? END,
         tracking_number = ?,
         courier = ?,
+        tags = ?,
         delivery_status = CASE 
           WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status
           WHEN EXISTS (SELECT 1 FROM status_mappings WHERE is_final = 1 AND LOWER(erp_status) = LOWER(orders.delivery_status)) THEN delivery_status
@@ -1112,10 +1140,14 @@ async function syncSpecificOrders(store, shopifyIds) {
         finalPrice, fresh.line_items.length, fresh.note || '',
         productTitles.join(', '),
         mapShopifyFinancialStatus(fresh.financial_status),
-        tracking, courier, newStatus,
+        tracking, courier, fresh.tags || '', newStatus,
         shopifyShipping, shopifyDiscount,
         String(fresh.id), store.id
       );
+      try {
+        const { reconcileByShopifyId } = require('../../services/readyTagSync');
+        reconcileByShopifyId(store.id, fresh.id);
+      } catch (_) {}
       if (newStatus === 'Cancelled' || (!fresh.fulfillment_status && !tracking && (fresh.fulfillments || []).some(f => f.status === 'cancelled'))) {
         try {
           const localOrd = db.prepare('SELECT id, delivery_status FROM orders WHERE shopify_order_id = ? AND store_id = ?').get(String(fresh.id), store.id);
