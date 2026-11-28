@@ -151,6 +151,25 @@ export default function CommandCenterHeader({ compactMode, preset, setPreset, st
             </button>
             <button
               type="button"
+              onClick={() => { setPreset && setPreset('All Time'); setStatus && setStatus('[READY TO BOOK]'); }}
+              className="btn btn-xs"
+              style={{
+                padding: '3px 10px',
+                fontSize: '0.7rem',
+                borderRadius: 12,
+                background: status === '[READY TO BOOK]' ? '#059669' : 'var(--bg-elevated)',
+                color: status === '[READY TO BOOK]' ? '#ffffff' : '#059669',
+                border: status === '[READY TO BOOK]' ? '1px solid #059669' : '1px solid rgba(16,185,129,0.4)',
+                cursor: 'pointer',
+                fontWeight: 700,
+                transition: 'all 0.15s ease'
+              }}
+              title="Confirmed & Ready to Book unbooked orders"
+            >
+              ✅ Ready to Book
+            </button>
+            <button
+              type="button"
               onClick={() => { setPreset && setPreset('All Time'); setStatus && setStatus('[ADVANCE VERIFY]'); }}
               className="btn btn-xs"
               style={{
