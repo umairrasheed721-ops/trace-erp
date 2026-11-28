@@ -695,31 +695,47 @@ export default function SearchTool() {
   }, [allOrders, addToast, fetchBacklogDates])
 
   const handleCancelBooking = useCallback(async (orderId) => {
-    if (!confirm('🛑 Cancel this courier booking?')) return
-    const previousOrders = [...allOrders];
-    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: null, courier: null, courier_status: null, delivery_status: 'Pending' } : o))
-    setBookingId(orderId)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/${orderId}/cancel-booking`, { method: 'POST' })
-      const data = await res.json()
-      if (data.success) {
-        const parts = ['✅ Booking Cancelled → Pending'];
-        if (data.shopifyFulfillmentCancelled) parts.push('Shopify Unfulfilled');
-        if (data.shopifyTagRemoved) parts.push('Tag Removed');
-        if (data.fifoRestored) parts.push('Stock Restored');
-        addToast(parts.join(' · '), 'info')
-        fetchBacklogDates();
-      } else {
-        throw new Error(data.error || 'Courier rejected cancellation')
+    const order = allOrders.find(o => o.id === orderId)
+    setConfirmDialog({
+      isOpen: true,
+      icon: '🛑',
+      variant: 'danger',
+      confirmText: 'Confirm Cancel Booking',
+      title: `Cancel Booking — ${order?.ref_number || `#${orderId}`}`,
+      message: 'This will cancel the parcel in the courier portal, unfulfill on Shopify, remove "Ready to Book" tag, and restore inventory.',
+      details: order ? [
+        { label: 'Customer', value: order.customer_name || '—' },
+        { label: 'Courier & CN', value: `${order.courier || '—'} · ${order.tracking_number || '—'}` },
+        { label: 'City', value: order.city || '—' },
+      ] : [],
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }))
+        const previousOrders = [...allOrders];
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: null, courier: null, courier_status: null, delivery_status: 'Pending' } : o))
+        setBookingId(orderId)
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${apiUrl}/api/orders/${orderId}/cancel-booking`, { method: 'POST' })
+          const data = await res.json()
+          if (data.success) {
+            const parts = ['✅ Booking Cancelled → Pending'];
+            if (data.shopifyFulfillmentCancelled) parts.push('Shopify Unfulfilled');
+            if (data.shopifyTagRemoved) parts.push('Tag Removed');
+            if (data.fifoRestored) parts.push('Stock Restored');
+            addToast(parts.join(' · '), 'info')
+            fetchBacklogDates();
+          } else {
+            throw new Error(data.error || 'Courier rejected cancellation')
+          }
+        } catch (err) {
+          setAllOrders(previousOrders)
+          addToast(`❌ Cancel Failed: ${err.message}`, 'error')
+        } finally {
+          setBookingId(null)
+        }
       }
-    } catch (err) {
-      setAllOrders(previousOrders)
-      addToast(`❌ Cancel Failed: ${err.message}`, 'error')
-    } finally {
-      setBookingId(null)
-    }
-  }, [allOrders, addToast, fetchBacklogDates])
+    })
+  }, [allOrders, addToast, fetchBacklogDates, setConfirmDialog])
 
   const handleForceResync = useCallback(async (orderId) => {
     setBookingId(orderId)
@@ -760,35 +776,52 @@ export default function SearchTool() {
       return
     }
     const label = accountType === 'backup' ? 'Instaworld API 2 (Backup)' : accountType === 'key3' ? 'Instaworld API 3 (Optional)' : 'Instaworld API 1 (Primary)';
-    if (!confirm(`🌐 Book this order with ${label}?`)) return
-    const previousOrders = [...allOrders];
-    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, courier: 'Instaworld', delivery_status: 'Booked' } : o))
-    setBookingId(orderId)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/${orderId}/book-instaworld`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account_type: accountType })
-      })
-      const data = await res.json()
-      if (data.success) {
-        const msg = data.shopifyFulfilled === false
-          ? `✅ Booked (${data.tracking_number}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
-          : `✅ Booked! Tracking: ${data.tracking_number}${data.prepaid ? ' (Prepaid COD=0)' : ''}`
-        addToast(msg, data.shopifyFulfilled === false ? 'warning' : 'success')
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'Instaworld', delivery_status: 'Booked' } : o))
-        fetchBacklogDates();
-      } else {
-        throw new Error(data.error || 'Booking rejected')
+    const isPrepaid = ['paid', 'payment posted'].includes((order?.payment_status || '').toLowerCase())
+    setConfirmDialog({
+      isOpen: true,
+      icon: '🌐',
+      variant: 'primary',
+      confirmText: `Book via ${label.split(' ')[0]}`,
+      title: `Book Order ${order?.ref_number || `#${orderId}`}`,
+      message: `Dispatch this order via ${label} and auto-fulfill on Shopify?`,
+      details: order ? [
+        { label: 'Customer', value: order.customer_name || '—' },
+        { label: 'Delivery City', value: order.city || '⚠️ MISSING CITY', highlight: !order.city ? 'danger' : null },
+        { label: 'Payment Mode', value: isPrepaid ? '💳 PREPAID — COD Rs. 0' : `💵 COD — Rs. ${Number(order.price || 0).toLocaleString()}`, highlight: isPrepaid ? 'success' : null },
+        { label: 'Courier', value: label },
+      ] : [],
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }))
+        const previousOrders = [...allOrders];
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, courier: 'Instaworld', delivery_status: 'Booked' } : o))
+        setBookingId(orderId)
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${apiUrl}/api/orders/${orderId}/book-instaworld`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_type: accountType })
+          })
+          const data = await res.json()
+          if (data.success) {
+            const msg = data.shopifyFulfilled === false
+              ? `✅ Booked (${data.tracking_number}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
+              : `✅ Booked! Tracking: ${data.tracking_number}${data.prepaid ? ' (Prepaid COD=0)' : ''}`
+            addToast(msg, data.shopifyFulfilled === false ? 'warning' : 'success')
+            setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'Instaworld', delivery_status: 'Booked' } : o))
+            fetchBacklogDates();
+          } else {
+            throw new Error(data.error || 'Booking rejected')
+          }
+        } catch (err) {
+          setAllOrders(previousOrders)
+          addToast(`❌ Booking Failed: ${err.message}`, 'error')
+        } finally {
+          setBookingId(null)
+        }
       }
-    } catch (err) {
-      setAllOrders(previousOrders)
-      addToast(`❌ Booking Failed: ${err.message}`, 'error')
-    } finally {
-      setBookingId(null)
-    }
-  }, [allOrders, addToast, fetchBacklogDates])
+    })
+  }, [allOrders, addToast, fetchBacklogDates, setConfirmDialog])
 
   const handleBookPostEx = useCallback(async (orderId) => {
     const order = allOrders.find(o => o.id === orderId)
@@ -796,31 +829,48 @@ export default function SearchTool() {
       addToast('🛑 Zero Cost Block: Heal cost before booking', 'error')
       return
     }
-    if (!confirm('🚀 Book this order with PostEx? This will generate a real tracking number.')) return
-    const previousOrders = [...allOrders];
-    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, courier: 'PostEx', delivery_status: 'Booked' } : o))
-    setBookingId(orderId)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/${orderId}/book-postex`, { method: 'POST' })
-      const data = await res.json()
-      if (data.success) {
-        const msg = data.shopifyFulfilled === false
-          ? `✅ Booked (${data.tracking_number}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
-          : `✅ Booked! Tracking: ${data.tracking_number}${data.prepaid ? ' (Prepaid COD=0)' : ''}`
-        addToast(msg, data.shopifyFulfilled === false ? 'warning' : 'success')
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'PostEx', delivery_status: 'Booked' } : o))
-        fetchBacklogDates();
-      } else {
-        throw new Error(data.error || 'Booking rejected')
+    const isPrepaid = ['paid', 'payment posted'].includes((order?.payment_status || '').toLowerCase())
+    setConfirmDialog({
+      isOpen: true,
+      icon: '🚀',
+      variant: 'primary',
+      confirmText: 'Book via PostEx',
+      title: `PostEx Booking — ${order?.ref_number || `#${orderId}`}`,
+      message: 'Generate a real PostEx tracking number and auto-fulfill on Shopify?',
+      details: order ? [
+        { label: 'Customer', value: order.customer_name || '—' },
+        { label: 'Delivery City', value: order.city || '⚠️ MISSING CITY', highlight: !order.city ? 'danger' : null },
+        { label: 'Payment Mode', value: isPrepaid ? '💳 PREPAID — COD Rs. 0' : `💵 COD — Rs. ${Number(order.price || 0).toLocaleString()}`, highlight: isPrepaid ? 'success' : null },
+        { label: 'Courier', value: 'PostEx' },
+      ] : [],
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }))
+        const previousOrders = [...allOrders];
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, courier: 'PostEx', delivery_status: 'Booked' } : o))
+        setBookingId(orderId)
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${apiUrl}/api/orders/${orderId}/book-postex`, { method: 'POST' })
+          const data = await res.json()
+          if (data.success) {
+            const msg = data.shopifyFulfilled === false
+              ? `✅ Booked (${data.tracking_number}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
+              : `✅ Booked! Tracking: ${data.tracking_number}${data.prepaid ? ' (Prepaid COD=0)' : ''}`
+            addToast(msg, data.shopifyFulfilled === false ? 'warning' : 'success')
+            setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'PostEx', delivery_status: 'Booked' } : o))
+            fetchBacklogDates();
+          } else {
+            throw new Error(data.error || 'Booking rejected')
+          }
+        } catch (err) {
+          setAllOrders(previousOrders)
+          addToast(`❌ Booking Failed: ${err.message}`, 'error')
+        } finally {
+          setBookingId(null)
+        }
       }
-    } catch (err) {
-      setAllOrders(previousOrders)
-      addToast(`❌ Booking Failed: ${err.message}`, 'error')
-    } finally {
-      setBookingId(null)
-    }
-  }, [allOrders, addToast, fetchBacklogDates])
+    })
+  }, [allOrders, addToast, fetchBacklogDates, setConfirmDialog])
 
   const toggleCompact = () => {
     setCompactMode(prev => {
@@ -1050,6 +1100,7 @@ export default function SearchTool() {
     return saved ? JSON.parse(saved) : { criticalLevel: 8, span: 1 }
   })
   const [syncProgress, setSyncProgress] = useState(null) // { current, total, message }
+  const [bulkFailureReport, setBulkFailureReport] = useState(null) // { actionType, success, failed, failedOrders }
   const [activeAgingBucket, setActiveAgingBucket] = useState(null)
 
   const handleSelectAgingBucket = useCallback((bucketLabel) => {
@@ -1650,6 +1701,14 @@ export default function SearchTool() {
             message: data.message || data.status || 'Processing Orders...'
           };
           setSyncProgress(normalized);
+          if (Array.isArray(data.failedOrders) && data.failedOrders.length > 0) {
+            setBulkFailureReport({
+              actionType: data.actionType || 'Bulk Operation',
+              success: data.success || 0,
+              failed: data.failed || data.failedOrders.length,
+              failedOrders: data.failedOrders,
+            });
+          }
           if (normalized.current >= normalized.total && normalized.total > 0) {
             setTimeout(() => setSyncProgress(null), 3000);
           }
@@ -1858,6 +1917,7 @@ export default function SearchTool() {
 
       <BulkActions
         selectedIds={selectedIds}
+        selectedOrders={allOrders.filter(o => selectedIds.includes(o.id))}
         setSelectedIds={setSelectedIds}
         bulkActionLoading={bulkActionLoading}
         handleBulkConfirm={handleBulkConfirm}
@@ -1873,6 +1933,53 @@ export default function SearchTool() {
         totalMatching={totalCount}
         handleSelectAllMatching={handleSelectAllMatching}
       />
+
+      {/* Bulk Booking / Cancel Failure Audit Banner */}
+      {bulkFailureReport && bulkFailureReport.failedOrders?.length > 0 && (
+        <div style={{
+          marginBottom: 14,
+          padding: '12px 16px',
+          borderRadius: 12,
+          background: 'rgba(239, 68, 68, 0.08)',
+          border: '1px solid rgba(239, 68, 68, 0.35)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.84rem', color: '#dc2626' }}>
+              ⚠️ {bulkFailureReport.actionType}: {bulkFailureReport.success} Succeeded · {bulkFailureReport.failed} Failed — Click any order to inspect/fix
+            </div>
+            <button
+              type="button"
+              onClick={() => setBulkFailureReport(null)}
+              style={{
+                padding: '3px 10px', borderRadius: 7, cursor: 'pointer',
+                background: 'var(--bg-surface)', border: '1px solid var(--border)',
+                color: 'var(--text-secondary)', fontSize: '0.74rem', fontWeight: 700,
+              }}
+            >✕ Dismiss</button>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 130, overflowY: 'auto' }}>
+            {bulkFailureReport.failedOrders.map((item, idx) => (
+              <button
+                key={`${item.id}-${idx}`}
+                type="button"
+                onClick={() => fetchOrderDetails(item.id)}
+                style={{
+                  padding: '4px 9px', borderRadius: 8, cursor: 'pointer',
+                  background: 'var(--bg-surface)', border: '1px solid rgba(239, 68, 68, 0.3)',
+                  color: 'var(--text-primary)', fontSize: '0.73rem',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <strong style={{ color: '#2563eb' }}>{item.ref_number}</strong>
+                <span style={{ color: '#dc2626' }}>{item.reason}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* WhatsApp Queue Modal */}
       {showWAQueue && (
@@ -2048,16 +2155,44 @@ export default function SearchTool() {
       )}
       {/* Premium Confirm Modal */}
       {confirmDialog.isOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content glass-panel" style={{ width: '450px', textAlign: 'center', padding: '30px' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '15px' }}>⚡</div>
-            <h3 className="premium-title">{confirmDialog.title}</h3>
-            <p className="premium-subtitle">{confirmDialog.message}</p>
+        <div
+          className="modal-overlay"
+          onClick={(e) => { if (e.target === e.currentTarget && !bulkActionLoading) setConfirmDialog(prev => ({ ...prev, isOpen: false })) }}
+        >
+          <div className="modal-content glass-panel" style={{ width: '460px', maxWidth: '94vw', textAlign: 'center', padding: '26px' }}>
+            <div style={{ fontSize: '2.3rem', marginBottom: '10px' }}>{confirmDialog.icon || '⚡'}</div>
+            <h3 className="premium-title" style={{ marginBottom: 6 }}>{confirmDialog.title}</h3>
+            <p className="premium-subtitle" style={{ marginBottom: confirmDialog.details?.length ? 14 : 20 }}>{confirmDialog.message}</p>
+
+            {Array.isArray(confirmDialog.details) && confirmDialog.details.length > 0 && (
+              <div style={{
+                textAlign: 'left',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: '10px 14px',
+                marginBottom: 18,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                fontSize: '0.8rem',
+              }}>
+                {confirmDialog.details.map((row, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>{row.label}</span>
+                    <span style={{
+                      fontWeight: 800,
+                      color: row.highlight === 'danger' ? '#dc2626' : (row.highlight === 'success' ? '#059669' : 'var(--text-primary)'),
+                    }}>{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             
             <div style={{ display: 'flex', gap: '12px' }}>
               <button 
                 className="btn btn-secondary" 
-                style={{ flex: 1, padding: '12px 20px', fontWeight: 600, borderRadius: '8px', fontSize: '0.85rem', justifyContent: 'center' }}
+                style={{ flex: 1, padding: '11px 18px', fontWeight: 600, borderRadius: '8px', fontSize: '0.85rem', justifyContent: 'center' }}
                 onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
                 disabled={bulkActionLoading}
               >
@@ -2065,11 +2200,15 @@ export default function SearchTool() {
               </button>
               <button 
                 className="btn btn-primary" 
-                style={{ flex: 1, padding: '12px 20px', fontWeight: 600, borderRadius: '8px', fontSize: '0.85rem', justifyContent: 'center' }}
+                style={{
+                  flex: 1, padding: '11px 18px', fontWeight: 700, borderRadius: '8px', fontSize: '0.85rem', justifyContent: 'center',
+                  background: confirmDialog.variant === 'danger' ? '#dc2626' : undefined,
+                  borderColor: confirmDialog.variant === 'danger' ? '#dc2626' : undefined,
+                }}
                 onClick={confirmDialog.onConfirm}
                 disabled={bulkActionLoading}
               >
-                {bulkActionLoading ? '⌛ Processing...' : 'Confirm Action'}
+                {bulkActionLoading ? '⌛ Processing...' : (confirmDialog.confirmText || 'Confirm Action')}
               </button>
             </div>
           </div>

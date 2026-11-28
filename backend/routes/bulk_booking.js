@@ -10,11 +10,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Helper: Start background booking
 async function processBulkBooking(storeId, ids, courier) {
   let success = 0, failed = 0;
+  const failedOrders = [];
   
   // Activate global Topbar capsule
   global.syncProgress = global.syncProgress || {};
   global.syncProgress[storeId] = { status: `Bulk Booking via ${courier}...`, processed: 0, total: ids.length, success, failed };
-  broadcast('sync_progress', global.syncProgress[storeId]);
+  broadcast('sync_progress', { storeId, ...global.syncProgress[storeId] });
 
   let isInstaworld = false;
   let accountType = 'primary';
@@ -59,12 +60,19 @@ async function processBulkBooking(storeId, ids, courier) {
       `).get(id);
 
       // Skip if already booked or Zero-Cost Block (Rule 13)
-      if (!order || (order.tracking_number && order.tracking_number.trim() !== '')) {
+      if (!order) {
+        failedOrders.push({ id, ref_number: `#${id}`, reason: 'Order not found' });
+        failed++;
+        continue;
+      }
+      if (order.tracking_number && order.tracking_number.trim() !== '') {
+        failedOrders.push({ id, ref_number: order.ref_number || `#${id}`, reason: `Already booked (${order.tracking_number})` });
         failed++;
         continue;
       }
       if (!order.cost || Number(order.cost) <= 0) {
         console.warn(`🛑 [BulkBook] Skipped order ${order.ref_number || id}: Zero Cost Block`);
+        failedOrders.push({ id, ref_number: order.ref_number || `#${id}`, reason: 'Zero Cost Block (cost = Rs. 0)' });
         failed++;
         continue;
       }
@@ -72,6 +80,7 @@ async function processBulkBooking(storeId, ids, courier) {
       // 2. Pre-flight Check: City (Never set invalid status or overwrite customer notes - Rule 12)
       if (!order.city || order.city.trim() === '') {
         console.warn(`⚠️ [BulkBook] Skipped order ${order.ref_number || id}: Missing City`);
+        failedOrders.push({ id, ref_number: order.ref_number || `#${id}`, reason: 'Missing City' });
         failed++;
         continue;
       }
@@ -120,6 +129,8 @@ async function processBulkBooking(storeId, ids, courier) {
     } catch (e) {
       // Keep existing valid ERP status instead of illegal 'Failed Booking' (Rule 12)
       console.error(`Bulk Booking Failed for Order ${id}:`, e.message);
+      const refRow = db.prepare('SELECT ref_number FROM orders WHERE id = ?').get(id);
+      failedOrders.push({ id, ref_number: refRow?.ref_number || `#${id}`, reason: e.message || 'Courier API error' });
       failed++;
     }
 
@@ -131,7 +142,15 @@ async function processBulkBooking(storeId, ids, courier) {
     broadcast('sync_progress', { storeId, ...global.syncProgress[storeId] });
   }
 
-  global.syncProgress[storeId] = { status: 'Booking Complete', processed: ids.length, total: ids.length, success, failed };
+  global.syncProgress[storeId] = {
+    status: 'Booking Complete',
+    actionType: 'Bulk Booking',
+    processed: ids.length,
+    total: ids.length,
+    success,
+    failed,
+    failedOrders: failedOrders.slice(0, 50),
+  };
   broadcast('sync_progress', { storeId, ...global.syncProgress[storeId] });
   setTimeout(() => { if (global.syncProgress) delete global.syncProgress[storeId]; }, 5000);
 }
@@ -171,6 +190,7 @@ router.post('/cancel', async (req, res) => {
   const { cancelOrderBookingCore } = require('../controllers/ordersController');
   const actor = req.user?.username || 'BulkCancel';
   let success = 0, failed = 0;
+  const failedOrders = [];
 
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
@@ -182,10 +202,14 @@ router.post('/cancel', async (req, res) => {
         success++;
       } else {
         console.warn(`⚠️ [BulkCancel] Order ${id} skipped/failed: ${result.error}`);
+        const refRow = db.prepare('SELECT ref_number FROM orders WHERE id = ?').get(id);
+        failedOrders.push({ id, ref_number: refRow?.ref_number || `#${id}`, reason: result.error || 'Cancel rejected' });
         failed++;
       }
     } catch (e) {
       console.error(`Cancel Failed for ${id}:`, e.message);
+      const refRow = db.prepare('SELECT ref_number FROM orders WHERE id = ?').get(id);
+      failedOrders.push({ id, ref_number: refRow?.ref_number || `#${id}`, reason: e.message || 'Courier error' });
       failed++;
     }
     await sleep(350);
@@ -193,8 +217,16 @@ router.post('/cancel', async (req, res) => {
     broadcast('sync_progress', { storeId, ...global.syncProgress[storeId] });
   }
 
-  global.syncProgress[storeId].status = 'Cancel Complete';
-  broadcast('sync_progress', global.syncProgress[storeId]);
+  global.syncProgress[storeId] = {
+    status: 'Cancel Complete',
+    actionType: 'Bulk Cancel',
+    processed: ids.length,
+    total: ids.length,
+    success,
+    failed,
+    failedOrders: failedOrders.slice(0, 50),
+  };
+  broadcast('sync_progress', { storeId, ...global.syncProgress[storeId] });
   setTimeout(() => { if (global.syncProgress) delete global.syncProgress[storeId]; }, 5000);
 });
 

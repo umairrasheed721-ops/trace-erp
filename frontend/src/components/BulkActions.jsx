@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 
 export default function BulkActions({
   selectedIds,
+  selectedOrders = [],
   setSelectedIds,
   bulkActionLoading,
   handleBulkConfirm,
@@ -20,6 +21,24 @@ export default function BulkActions({
 }) {
   const { user, activeStore } = useApp()
   if (selectedIds.length === 0) return null
+
+  // Smart Selection Breakdown Pills
+  let pendingCount = 0
+  let confirmedCount = 0
+  let trackedCount = 0
+  let zeroCostCount = 0
+  for (const o of selectedOrders) {
+    const st = (o.delivery_status || '').toLowerCase()
+    const hasTrack = Boolean(o.tracking_number && String(o.tracking_number).trim() !== '')
+    if (hasTrack) trackedCount++
+    else if (st === 'confirmed') confirmedCount++
+    else pendingCount++
+    if (!o.cost || parseFloat(o.cost) <= 0) zeroCostCount++
+  }
+  const hasSelectionMeta = selectedOrders.length > 0
+  const canBook = !hasSelectionMeta || (selectedOrders.length - trackedCount > 0)
+  const canCancel = !hasSelectionMeta || trackedCount > 0
+  const canRevert = !hasSelectionMeta || (selectedOrders.length - trackedCount > 0)
 
   const styles = {
     container: {
@@ -145,6 +164,31 @@ export default function BulkActions({
   return (
     <div style={styles.container}>
       <div style={styles.selectionText}>📦 {selectedIds.length} selected</div>
+
+      {hasSelectionMeta && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+          {pendingCount > 0 && (
+            <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: 'rgba(148,163,184,0.18)', color: '#cbd5e1' }}>
+              {pendingCount} Pending
+            </span>
+          )}
+          {confirmedCount > 0 && (
+            <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: 'rgba(16,185,129,0.18)', color: '#34d399' }}>
+              {confirmedCount} Confirmed
+            </span>
+          )}
+          {trackedCount > 0 && (
+            <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: 'rgba(99,102,241,0.22)', color: '#a5b4fc' }}>
+              {trackedCount} Tracked
+            </span>
+          )}
+          {zeroCostCount > 0 && (
+            <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 7px', borderRadius: 99, background: 'rgba(239,68,68,0.22)', color: '#fca5a5' }}>
+              🛑 {zeroCostCount} Rs 0 Cost
+            </span>
+          )}
+        </div>
+      )}
       
       {totalMatching > selectedIds.length && (
         <button 
@@ -159,10 +203,11 @@ export default function BulkActions({
 
       {/* --- BULK BOOKING CONTROLS --- */}
       <select 
-        style={styles.selectBook}
-        disabled={bulkActionLoading}
-        onMouseOver={(e) => e.target.style.background = '#9333ea'}
-        onMouseOut={(e) => e.target.style.background = '#a855f7'}
+        style={{ ...styles.selectBook, opacity: (!canBook || bulkActionLoading) ? 0.45 : 1, cursor: (!canBook || bulkActionLoading) ? 'not-allowed' : 'pointer' }}
+        disabled={bulkActionLoading || !canBook}
+        title={canBook ? 'Book selected untracked orders' : 'All selected orders already have tracking numbers'}
+        onMouseOver={(e) => { if (canBook) e.target.style.background = '#9333ea' }}
+        onMouseOut={(e) => { e.target.style.background = '#a855f7' }}
         onChange={(e) => {
           const val = e.target.value;
           if (val === 'postex') handleBulkBookPostEx();
@@ -191,13 +236,14 @@ export default function BulkActions({
       </select>
 
       <button 
-        disabled={bulkActionLoading}
+        disabled={bulkActionLoading || !canCancel}
         onClick={handleBulkCancel}
-        style={styles.btnCancelBooking}
-        onMouseOver={(e) => { e.target.style.background = 'rgba(239, 68, 68, 0.2)' }}
+        title={canCancel ? `Cancel booking on ${trackedCount} tracked order(s)` : 'No tracked/booked orders selected'}
+        style={{ ...styles.btnCancelBooking, opacity: (!canCancel || bulkActionLoading) ? 0.45 : 1, cursor: (!canCancel || bulkActionLoading) ? 'not-allowed' : 'pointer' }}
+        onMouseOver={(e) => { if (canCancel) e.target.style.background = 'rgba(239, 68, 68, 0.2)' }}
         onMouseOut={(e) => { e.target.style.background = 'rgba(239, 68, 68, 0.1)' }}
       >
-        🛑 CANCEL BOOKING
+        🛑 CANCEL BOOKING{trackedCount > 0 ? ` (${trackedCount})` : ''}
       </button>
 
       <div style={styles.divider} />
@@ -205,21 +251,23 @@ export default function BulkActions({
       <button 
         disabled={bulkActionLoading}
         onClick={handleBulkConfirm}
+        title='Mark Confirmed & add "Ready to Book" tag on Shopify'
         style={styles.btnConfirm}
         onMouseOver={(e) => { e.target.style.background = 'rgba(16, 185, 129, 0.2)' }}
         onMouseOut={(e) => { e.target.style.background = 'rgba(16, 185, 129, 0.1)' }}
       >
-        {bulkActionLoading ? '⌛...' : '✅ BULK CONFIRM'}
+        {bulkActionLoading ? '⌛...' : '✅ CONFIRM + TAG'}
       </button>
 
       <button 
-        disabled={bulkActionLoading}
+        disabled={bulkActionLoading || !canRevert}
         onClick={handleBulkRevert}
-        style={styles.btnRevert}
-        onMouseOver={(e) => { e.target.style.background = 'rgba(245, 158, 11, 0.2)' }}
+        title={canRevert ? 'Revert untracked orders to Pending & remove "Ready to Book" tag' : 'Tracked orders must use Cancel Booking instead of Revert'}
+        style={{ ...styles.btnRevert, opacity: (!canRevert || bulkActionLoading) ? 0.45 : 1, cursor: (!canRevert || bulkActionLoading) ? 'not-allowed' : 'pointer' }}
+        onMouseOver={(e) => { if (canRevert) e.target.style.background = 'rgba(245, 158, 11, 0.2)' }}
         onMouseOut={(e) => { e.target.style.background = 'rgba(245, 158, 11, 0.1)' }}
       >
-        {bulkActionLoading ? '⌛...' : '↩️ REVERT TO PENDING'}
+        {bulkActionLoading ? '⌛...' : '↩️ REVERT + UNTAG'}
       </button>
 
       <div style={styles.divider} />
@@ -233,18 +281,45 @@ export default function BulkActions({
         value=""
       >
         <option value="" disabled>🏷️ BULK STATUS...</option>
+        <option value="Pending">Pending</option>
+        <option value="Confirmed">Confirmed</option>
+        <option value="Booked">Booked</option>
+        <option value="In Transit">In Transit</option>
         {(user?.role === 'admin' || user?.can_set_final_status === 1) && (
           <>
-            <option value="Return Received">Return Received</option>
             <option value="Delivered">Delivered</option>
+            <option value="Return Received">Return Received</option>
           </>
         )}
         <option value="Returned">Returned</option>
-        <option value="RTO">RTO</option>
         <option value="Cancelled">Cancelled</option>
-        <option value="Confirmed">Confirmed</option>
-        <option value="Pending">Pending</option>
       </select>
+
+      {typeof handleBulkSyncStatus === 'function' && (
+        <button 
+          disabled={bulkActionLoading}
+          onClick={handleBulkSyncStatus}
+          title="Pull latest status, tags & details from Shopify for selected orders"
+          style={styles.btnSecondary}
+          onMouseOver={(e) => { e.target.style.background = '#374151' }}
+          onMouseOut={(e) => { e.target.style.background = '#1f2937' }}
+        >
+          🔄 SYNC SHOPIFY
+        </button>
+      )}
+
+      {typeof handleBulkSyncCourier === 'function' && (
+        <button 
+          disabled={bulkActionLoading || !canCancel}
+          onClick={handleBulkSyncCourier}
+          title={canCancel ? 'Fetch live PostEx / Instaworld courier status for selected orders' : 'Select tracked orders to sync courier status'}
+          style={{ ...styles.btnSecondary, opacity: (!canCancel || bulkActionLoading) ? 0.45 : 1, cursor: (!canCancel || bulkActionLoading) ? 'not-allowed' : 'pointer' }}
+          onMouseOver={(e) => { if (canCancel) e.target.style.background = '#374151' }}
+          onMouseOut={(e) => { e.target.style.background = '#1f2937' }}
+        >
+          🚚 SYNC COURIER
+        </button>
+      )}
 
       <button 
         onClick={handleExportTracking}

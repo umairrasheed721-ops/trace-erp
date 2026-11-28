@@ -212,83 +212,164 @@ const CommandTableRow = React.memo(({
           <td key={col.id}>
             <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
               {(o.cost <= 0) && (
-                <div 
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveRowId(o.id);
+                    fetchOrderDetails(o.id);
+                  }}
                   style={{ 
                     background: 'var(--red)', 
                     color: '#fff', 
+                    border: 'none',
                     padding: '2px 5px', 
                     borderRadius: 4, 
-                    fontSize: '0.6rem', 
+                    fontSize: '0.62rem', 
                     fontWeight: 800,
+                    cursor: 'pointer',
+                    flexShrink: 0,
                   }}
-                  title="ZERO COST BLOCK: Processing Disabled"
+                  title="ZERO COST BLOCK — Click to inspect order & heal cost"
                 >
                   🛑
-                </div>
+                </button>
               )}
               {bookingId === o.id ? (
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>⌛ Working...</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700 }}>⌛ Working...</span>
               ) : (
-                <select
-                  className="btn btn-sm"
-                  style={{ 
-                    padding: '3px 8px', 
-                    fontSize: '0.74rem', 
-                    fontWeight: 600,
-                    flexShrink: 0,
-                    width: '100%',
-                    maxWidth: '120px',
-                    background: s === 'confirmed' ? 'var(--brand)' : 'var(--bg-elevated)',
-                    color: s === 'confirmed' ? '#fff' : 'var(--text-primary)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    opacity: 1
-                  }}
-                  value=""
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    const action = e.target.value;
-                    if (action === 'confirm') handleConfirmOrder(o.id);
-                    else if (action === 'revert') handleRevertConfirm(o.id);
-                    else if (action === 'postex') handleBookPostEx(o.id);
-                    else if (action === 'cancel') handleCancelBooking(o.id);
-                    else if (action.startsWith('insta:')) handleBookInstaworld(o.id, action.split(':')[1]);
-                    else if (action === 'resync') onForceResync(o.id);
-                  }}
-                >
-                  <option value="" disabled>⚡ Action</option>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                  {/* 1-Click Confirm (Pending / Unconfirmed & Untracked) */}
                   {!o.tracking_number && s !== 'confirmed' && (
-                    <option value="confirm" disabled={o.cost <= 0}>✅ Confirm Order</option>
+                    <button
+                      type="button"
+                      disabled={o.cost <= 0}
+                      onClick={() => handleConfirmOrder(o.id)}
+                      title={o.cost <= 0 ? 'Zero Cost Block — click 🛑 to fix cost first' : 'Confirm Order & add "Ready to Book" tag on Shopify'}
+                      style={{
+                        padding: '3px 9px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        borderRadius: 6,
+                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                        background: o.cost <= 0 ? 'var(--bg-elevated)' : 'rgba(16, 185, 129, 0.12)',
+                        color: o.cost <= 0 ? 'var(--text-muted)' : '#059669',
+                        cursor: o.cost <= 0 ? 'not-allowed' : 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      ✅ Confirm
+                    </button>
                   )}
-                  {!o.tracking_number && s === 'confirmed' && (
-                    <option value="revert" disabled={o.cost <= 0}>↩️ Revert to Pending</option>
-                  )}
+
+                  {/* Confirmed & Untracked: Courier Book Select + 1-Click Revert */}
                   {!o.tracking_number && s === 'confirmed' && (
                     <>
-                      <option value="postex" disabled={o.cost <= 0}>⚡ Book PostEx</option>
-                      {activeStore?.instaworld_key && (
-                        <option value="insta:primary" disabled={o.cost <= 0}>
-                          🌐 Book Instaworld (API 1: {activeStore.instaworld_key.substring(0, 4)}...)
-                        </option>
-                      )}
-                      {activeStore?.instaworld_key_backup && (
-                        <option value="insta:backup" disabled={o.cost <= 0}>
-                          🌐 Book Instaworld (API 2: {activeStore.instaworld_key_backup.substring(0, 4)}...)
-                        </option>
-                      )}
-                      {activeStore?.instaworld_key_3 && (
-                        <option value="insta:key3" disabled={o.cost <= 0}>
-                          🌐 Book Instaworld (API 3: {activeStore.instaworld_key_3.substring(0, 4)}...)
-                        </option>
-                      )}
+                      <select
+                        className="btn btn-sm"
+                        disabled={o.cost <= 0}
+                        title={o.cost <= 0 ? 'Zero Cost Block — click 🛑 to fix cost first' : 'Select courier to book order'}
+                        style={{
+                          padding: '3px 7px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          maxWidth: '108px',
+                          background: o.cost <= 0 ? 'var(--bg-elevated)' : 'var(--brand)',
+                          color: o.cost <= 0 ? 'var(--text-muted)' : '#fff',
+                          border: '1px solid var(--border)',
+                          borderRadius: 6,
+                          cursor: o.cost <= 0 ? 'not-allowed' : 'pointer',
+                        }}
+                        value=""
+                        onChange={(e) => {
+                          const action = e.target.value;
+                          if (action === 'postex') handleBookPostEx(o.id);
+                          else if (action.startsWith('insta:')) handleBookInstaworld(o.id, action.split(':')[1]);
+                        }}
+                      >
+                        <option value="" disabled>🚀 Book</option>
+                        {activeStore?.postex_token && (
+                          <option value="postex">⚡ Book PostEx</option>
+                        )}
+                        {activeStore?.instaworld_key && (
+                          <option value="insta:primary">
+                            🌐 Instaworld 1 ({activeStore.instaworld_key.substring(0, 4)}...)
+                          </option>
+                        )}
+                        {activeStore?.instaworld_key_backup && (
+                          <option value="insta:backup">
+                            🌐 Instaworld 2 ({activeStore.instaworld_key_backup.substring(0, 4)}...)
+                          </option>
+                        )}
+                        {activeStore?.instaworld_key_3 && (
+                          <option value="insta:key3">
+                            🌐 Instaworld 3 ({activeStore.instaworld_key_3.substring(0, 4)}...)
+                          </option>
+                        )}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleRevertConfirm(o.id)}
+                        title='Revert to Pending & remove "Ready to Book" tag on Shopify'
+                        style={{
+                          padding: '3px 6px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          borderRadius: 6,
+                          border: '1px solid rgba(245, 158, 11, 0.35)',
+                          background: 'rgba(245, 158, 11, 0.1)',
+                          color: '#d97706',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        ↩️
+                      </button>
                     </>
                   )}
-                  {!!o.tracking_number && ['booked','pending','confirmed'].includes(s) && (
-                    <option value="cancel" disabled={o.cost <= 0}>🛑 Cancel Booking</option>
+
+                  {/* Booked & Tracked: 1-Click Cancel Booking (NEVER blocked by cost <= 0) */}
+                  {!!o.tracking_number && ['booked', 'pending', 'confirmed'].includes(s) && (
+                    <button
+                      type="button"
+                      onClick={() => handleCancelBooking(o.id)}
+                      title="Cancel Courier Booking, Unfulfill Shopify & Reset to Pending"
+                      style={{
+                        padding: '3px 8px',
+                        fontSize: '0.71rem',
+                        fontWeight: 700,
+                        borderRadius: 6,
+                        border: '1px solid rgba(239, 68, 68, 0.35)',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        color: '#dc2626',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      🛑 Cancel
+                    </button>
                   )}
-                  <option value="resync">🔄 Force Resync</option>
-                </select>
+
+                  {/* Always-available Force Resync Button */}
+                  <button
+                    type="button"
+                    onClick={() => onForceResync(o.id)}
+                    title="Force Resync Order from Shopify"
+                    style={{
+                      padding: '3px 6px',
+                      fontSize: '0.71rem',
+                      fontWeight: 700,
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      background: 'var(--bg-elevated)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    🔄
+                  </button>
+                </div>
               )}
             </div>
           </td>
@@ -913,25 +994,28 @@ const CommandTableRow = React.memo(({
           return (
             <td key={col.id}>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                {tagList.map((tag, idx) => (
-                  <span
-                    key={idx}
-                    className="badge"
-                    style={{
-                      background: 'rgba(168, 85, 247, 0.12)',
-                      color: 'var(--brand)',
-                      border: '1px solid rgba(168, 85, 247, 0.3)',
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                      padding: '1px 6px',
-                      borderRadius: 6,
-                      whiteSpace: 'nowrap'
-                    }}
-                    title={`Shopify Tag: ${tag} (Read-Only)`}
-                  >
-                    🏷️ {tag}
-                  </span>
-                ))}
+                {tagList.map((tag, idx) => {
+                  const isReady = tag.toLowerCase() === 'ready to book';
+                  return (
+                    <span
+                      key={idx}
+                      className="badge"
+                      style={{
+                        background: isReady ? 'rgba(236, 72, 153, 0.14)' : 'rgba(168, 85, 247, 0.12)',
+                        color: isReady ? '#db2777' : 'var(--brand)',
+                        border: `1px solid ${isReady ? 'rgba(236, 72, 153, 0.4)' : 'rgba(168, 85, 247, 0.3)'}`,
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        padding: '1px 6px',
+                        borderRadius: 6,
+                        whiteSpace: 'nowrap'
+                      }}
+                      title={`Shopify Tag: ${tag}`}
+                    >
+                      {isReady ? '📋' : '🏷️'} {tag}
+                    </span>
+                  );
+                })}
               </div>
             </td>
           );
