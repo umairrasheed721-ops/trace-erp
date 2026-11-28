@@ -411,8 +411,12 @@ router.post('/pick-list', (req, res) => {
 
     if (storeIds.length > 0) {
       const sPh = storeIds.map(() => '?').join(',');
+      const pmcCols = db.prepare('PRAGMA table_info(product_master_costs)').all().map(c => c.name);
+      const imgExpr = pmcCols.includes('variant_image_url')
+        ? 'variant_image_url AS image_url'
+        : (pmcCols.includes('image_url') ? 'image_url' : 'NULL AS image_url');
       const pmcRows = db.prepare(`
-        SELECT store_id, shopify_variant_id, sku, parent_title, variant_title, image_url,
+        SELECT store_id, shopify_variant_id, sku, parent_title, variant_title, ${imgExpr},
                COALESCE(inventory_qty, 0) AS available_qty,
                COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) AS on_hand_qty
         FROM product_master_costs
@@ -650,13 +654,28 @@ router.post('/booking-risk-check', (req, res) => {
       WHERE id IN (${ph})
     `).all(...ids);
 
-    // 1. Load Blacklist normalized phones in 1 lightweight query
+    // 1. Load Blacklist normalized phones (supports both phone-based & tracking_number-based blacklist schemas)
     const blacklistMap = new Map();
     try {
-      const blRows = db.prepare('SELECT phone, reason FROM blacklist').all();
-      for (const b of blRows) {
-        const p10 = norm10(b.phone);
-        if (p10) blacklistMap.set(p10, b.reason || 'Blacklisted phone');
+      const blCols = db.prepare('PRAGMA table_info(blacklist)').all().map(c => c.name);
+      if (blCols.includes('phone')) {
+        const blRows = db.prepare('SELECT phone, reason FROM blacklist').all();
+        for (const b of blRows) {
+          const p10 = norm10(b.phone);
+          if (p10) blacklistMap.set(p10, b.reason || 'Blacklisted phone');
+        }
+      }
+      if (blCols.includes('tracking_number')) {
+        const blTrackRows = db.prepare(`
+          SELECT DISTINCT o.phone
+          FROM blacklist b
+          JOIN orders o ON o.tracking_number = b.tracking_number
+          WHERE o.phone IS NOT NULL AND o.phone != ''
+        `).all();
+        for (const b of blTrackRows) {
+          const p10 = norm10(b.phone);
+          if (p10 && !blacklistMap.has(p10)) blacklistMap.set(p10, 'Blacklisted history');
+        }
       }
     } catch (_) {}
 
