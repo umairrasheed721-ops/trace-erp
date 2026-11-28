@@ -7,8 +7,15 @@ const { getBestMatch } = require('../engines/logistics');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// Helper: Start background booking
-async function processBulkBooking(storeId, ids, courier) {
+// Helper: Start background booking (supports batch + per-order pickup locations & courier slip remarks)
+async function processBulkBooking(storeId, ids, courier, bookingOptions = {}) {
+  const {
+    pickupAddressCode = '',
+    pickupAddress = '',
+    defaultRemarks = '',
+    perOrderRemarks = {},
+    perOrderPickup = {},
+  } = bookingOptions || {};
   let success = 0, failed = 0;
   const failedOrders = [];
   
@@ -51,9 +58,10 @@ async function processBulkBooking(storeId, ids, courier) {
     }
 
     try {
-      // 1. Fetch Order
+      // 1. Fetch Order + store pickup/remark defaults
       const order = db.prepare(`
-        SELECT o.*, s.shop_domain, s.access_token, s.postex_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.gas_proxy_url
+        SELECT o.*, s.shop_domain, s.access_token, s.postex_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3,
+               s.gas_proxy_url, s.store_name, s.postex_pickup_code, s.default_courier_remarks, s.instaworld_pickup_address
         FROM orders o 
         JOIN stores s ON o.store_id = s.id 
         WHERE o.id = ?
@@ -94,10 +102,30 @@ async function processBulkBooking(storeId, ids, courier) {
         order.is_prepaid = true;
       }
 
+      const idKey = String(id);
+      const hasPerOrderRemark = Object.prototype.hasOwnProperty.call(perOrderRemarks, idKey);
+      const resolvedRemarks = String(
+        hasPerOrderRemark
+          ? perOrderRemarks[idKey]
+          : (order.courier_remarks || defaultRemarks || order.default_courier_remarks || '')
+      ).trim();
+
+      const hasPerOrderPickup = Object.prototype.hasOwnProperty.call(perOrderPickup, idKey) && String(perOrderPickup[idKey] || '').trim() !== '';
+      const resolvedPickup = String(
+        hasPerOrderPickup
+          ? perOrderPickup[idKey]
+          : (courier === 'PostEx'
+              ? (pickupAddressCode || order.pickup_address_code || order.postex_pickup_code || '')
+              : (pickupAddress || pickupAddressCode || order.pickup_address_code || order.instaworld_pickup_address || ''))
+      ).trim();
+
       // 4. API Call (Instaworld courier param intentionally kept as 'TCS' per user instruction)
       let trackingNumber;
       if (courier === 'PostEx') {
-        trackingNumber = await createOrderFn(order, order);
+        trackingNumber = await createOrderFn(order, order, {
+          pickupAddressCode: resolvedPickup,
+          remarks: resolvedRemarks,
+        });
       } else if (isInstaworld) {
         let apiKey = order.instaworld_key;
         if (accountType === 'backup') {
@@ -105,13 +133,24 @@ async function processBulkBooking(storeId, ids, courier) {
         } else if (accountType === 'key3') {
           apiKey = order.instaworld_key_3;
         }
-        trackingNumber = await createOrderFn(order, order, 'TCS', apiKey);
+        trackingNumber = await createOrderFn(order, order, 'TCS', apiKey, {
+          pickupAddress: resolvedPickup,
+          remarks: resolvedRemarks,
+        });
       } else {
-        trackingNumber = await createOrderFn(order, order, courier);
+        trackingNumber = await createOrderFn(order, order, courier, null, {
+          pickupAddress: resolvedPickup,
+          remarks: resolvedRemarks,
+        });
       }
       
       const dbCourier = isInstaworld ? 'Instaworld' : courier;
-      db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, dbCourier, id);
+      db.prepare(`
+        UPDATE orders
+        SET tracking_number = ?, courier = ?, delivery_status = 'Booked',
+            courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
+        WHERE id = ?
+      `).run(trackingNumber, dbCourier, resolvedRemarks, resolvedPickup, id);
       try {
         const { allocateOrderFifoOnDispatch } = require('../services/poLedgerService');
         allocateOrderFifoOnDispatch(id, 'BulkBook');
@@ -170,16 +209,30 @@ async function processBulkBooking(storeId, ids, courier) {
 
 // POST /api/bulk/book
 router.post('/book', (req, res) => {
-  const ids = req.body.ids || req.body.order_ids;
-  const { courier } = req.body;
+  const b = req.body || {};
+  const ids = b.ids || b.order_ids;
+  const {
+    courier,
+    pickup_address_code = '',
+    pickup_address = '',
+    default_remarks = '',
+    per_order_remarks = {},
+    per_order_pickup = {},
+  } = b;
   if (!ids || !ids.length || !courier) return res.status(400).json({ error: 'ids and courier required' });
 
   // Get storeId from first order
   const order = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(ids[0]);
   if (!order) return res.status(404).json({ error: 'Order not found' });
 
-  // Spin up background loop
-  processBulkBooking(order.store_id, ids, courier).catch(console.error);
+  // Spin up background loop with batch + per-order pickup locations & courier slip remarks
+  processBulkBooking(order.store_id, ids, courier, {
+    pickupAddressCode: pickup_address_code,
+    pickupAddress: pickup_address,
+    defaultRemarks: default_remarks,
+    perOrderRemarks: per_order_remarks && typeof per_order_remarks === 'object' ? per_order_remarks : {},
+    perOrderPickup: per_order_pickup && typeof per_order_pickup === 'object' ? per_order_pickup : {},
+  }).catch(console.error);
 
   // Return immediate 202 Accepted
   res.status(202).json({ success: true, message: 'Bulk booking started' });

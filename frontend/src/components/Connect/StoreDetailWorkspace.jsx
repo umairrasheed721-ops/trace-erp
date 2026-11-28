@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { COURIER_REMARK_PRESETS, hasRemarkPhrase, toggleRemarkPhrase, formatPickupOptionLabel } from '../../utils/courierBookingPresets'
 
 const FROZEN_DOMAIN = '1i7tnb-bb.myshopify.com'
 
@@ -40,6 +41,8 @@ export default function StoreDetailWorkspace({
   const [sniperInput, setSniperInput] = useState('')
   const [sniperRunning, setSniperRunning] = useState(false)
   const [sniperLogs, setSniperLogs] = useState([])
+  const [pickupLocations, setPickupLocations] = useState([])
+  const [pickupFetching, setPickupFetching] = useState(false)
 
   const isFrozen = (store.shop_domain || '').toLowerCase().includes(FROZEN_DOMAIN)
   const isSyncing = store.sync_status === 'syncing'
@@ -62,7 +65,17 @@ export default function StoreDetailWorkspace({
       postex_track_url: store.postex_track_url || '',
       instaworld_track_url: store.instaworld_track_url || '',
       gas_proxy_url: store.gas_proxy_url || '',
+      postex_pickup_code: store.postex_pickup_code || '',
+      postex_pickup_label: store.postex_pickup_label || '',
+      default_courier_remarks: store.default_courier_remarks || '',
+      instaworld_pickup_address: store.instaworld_pickup_address || '',
     })
+    try {
+      const cached = store.postex_pickup_cache ? JSON.parse(store.postex_pickup_cache) : []
+      setPickupLocations(Array.isArray(cached) ? cached : [])
+    } catch (_) {
+      setPickupLocations([])
+    }
     setReauthForm({ client_id: store.shopify_client_id || '', client_secret: '' })
     setSyncStartDate(store.sync_start_date || '2024-01-01')
     setDirty(false)
@@ -102,6 +115,29 @@ export default function StoreDetailWorkspace({
       if (!silent) addToast('Network error during health check', 'error')
     }
     if (!isCancelled()) setHealthLoading(false)
+  }
+
+  const handleFetchPostexPickups = async () => {
+    setPickupFetching(true)
+    try {
+      const res = await fetch(`/api/stores/${store.id}/pickup-locations?refresh=1`)
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.success) {
+        const list = Array.isArray(data.locations) ? data.locations : []
+        setPickupLocations(list)
+        if (list.length > 0) {
+          addToast(`📍 Loaded ${list.length} PostEx pickup location(s)!`, 'success')
+        } else {
+          addToast(data.error || 'No PostEx pickup locations returned', 'warning')
+        }
+      } else {
+        addToast(data.error || 'Failed to fetch PostEx pickup locations', 'error')
+      }
+    } catch (err) {
+      addToast(`❌ ${err.message}`, 'error')
+    } finally {
+      setPickupFetching(false)
+    }
   }
 
   const updateField = (key) => (e) => {
@@ -778,6 +814,55 @@ export default function StoreDetailWorkspace({
                 </div>
               </div>
               {testResults.postex && <TestResultBanner result={testResults.postex} />}
+
+              {/* PostEx Default Pickup Location */}
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, gap: 8, flexWrap: 'wrap' }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>📍 Default PostEx Pickup Location (pickupAddressCode)</label>
+                  <button
+                    type="button"
+                    disabled={pickupFetching || !form.postex_token}
+                    onClick={handleFetchPostexPickups}
+                    style={{ ...testBtnStyle, padding: '4px 10px', fontSize: '0.73rem' }}
+                  >
+                    {pickupFetching ? '⏳ Fetching...' : '🔄 Fetch Pickup Locations'}
+                  </button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 0.8fr', gap: 10 }}>
+                  <select
+                    className="form-input"
+                    value={form.postex_pickup_code || ''}
+                    onChange={(e) => {
+                      const code = e.target.value
+                      const loc = pickupLocations.find(l => l.addressCode === code)
+                      setForm(prev => ({
+                        ...prev,
+                        postex_pickup_code: code,
+                        postex_pickup_label: loc ? formatPickupOptionLabel(loc) : code,
+                      }))
+                      setDirty(true)
+                    }}
+                  >
+                    <option value="">— Use PostEx Portal Default (No Override) —</option>
+                    {pickupLocations.map((loc) => (
+                      <option key={loc.addressCode || loc.address} value={loc.addressCode}>
+                        {formatPickupOptionLabel(loc)}
+                      </option>
+                    ))}
+                    {form.postex_pickup_code && !pickupLocations.some(l => l.addressCode === form.postex_pickup_code) && (
+                      <option value={form.postex_pickup_code}>
+                        {form.postex_pickup_label || `Saved Code: ${form.postex_pickup_code}`}
+                      </option>
+                    )}
+                  </select>
+                  <input
+                    className="form-input font-mono"
+                    value={form.postex_pickup_code || ''}
+                    onChange={updateField('postex_pickup_code')}
+                    placeholder="Manual code (e.g. 001)"
+                  />
+                </div>
+              </div>
             </ConfigCard>
 
             {/* Instaworld */}
@@ -846,6 +931,61 @@ export default function StoreDetailWorkspace({
                 </div>
               </div>
               {testResults.instaworld && <TestResultBanner result={testResults.instaworld} />}
+
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                <label style={labelStyle}>📍 Default Instaworld Pickup / Warehouse Address (Optional)</label>
+                <input
+                  className="form-input"
+                  value={form.instaworld_pickup_address || ''}
+                  onChange={updateField('instaworld_pickup_address')}
+                  placeholder="Optional warehouse/pickup address sent with Instaworld bookings"
+                />
+              </div>
+            </ConfigCard>
+
+            {/* Default Courier Slip Remarks (All Couriers) */}
+            <ConfigCard
+              icon="📋"
+              title="Default Courier Slip Remarks (All Couriers)"
+              subtitle="Pre-filled automatically during Single & Bulk Booking — can always be customized per order"
+            >
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                {COURIER_REMARK_PRESETS.map((p) => {
+                  const active = hasRemarkPhrase(form.default_courier_remarks, p.text)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setForm(prev => ({
+                          ...prev,
+                          default_courier_remarks: toggleRemarkPhrase(prev.default_courier_remarks, p.text),
+                        }))
+                        setDirty(true)
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: 999,
+                        fontSize: '0.73rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        border: `1px solid ${active ? '#6366f1' : 'var(--border-bright)'}`,
+                        background: active ? 'rgba(99,102,241,0.16)' : 'var(--bg-elevated)',
+                        color: active ? '#6366f1' : 'var(--text-primary)',
+                      }}
+                    >
+                      {active ? '✓ ' : '+ '}{p.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <input
+                className="form-input"
+                value={form.default_courier_remarks || ''}
+                onChange={updateField('default_courier_remarks')}
+                maxLength={250}
+                placeholder="Leave blank for none, or e.g. Call before delivery"
+              />
             </ConfigCard>
 
             {/* Direct Couriers + Maps */}

@@ -163,7 +163,7 @@ router.post('/bulk-revert', async (req, res) => {
 
 // POST /api/orders/bulk-book-postex
 router.post('/bulk-book-postex', async (req, res) => {
-  const { ids } = req.body;
+  const { ids, pickup_address_code = '', default_remarks = '', per_order_remarks = {} } = req.body || {};
   const { createPostExOrder } = require('../../engines/postex');
   const { fulfillShopifyOrder } = require('../../engines/shopify');
   const { getBestMatch } = require('../../engines/logistics');
@@ -171,7 +171,7 @@ router.post('/bulk-book-postex', async (req, res) => {
   let success = 0, failed = 0;
   for (const id of ids) {
     try {
-      const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(id);
+      const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token, s.postex_pickup_code, s.default_courier_remarks FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(id);
       if (!order || (order.tracking_number && order.tracking_number.trim() !== '')) { failed++; continue; }
       if (!order.cost || Number(order.cost) <= 0 || !order.city || order.city.trim() === '') { failed++; continue; }
 
@@ -182,8 +182,24 @@ router.post('/bulk-book-postex', async (req, res) => {
         order.is_prepaid = true;
       }
 
-      const trackingNumber = await createPostExOrder(order, order);
-      db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, 'PostEx', id);
+      const idKey = String(id);
+      const resolvedRemarks = String(
+        Object.prototype.hasOwnProperty.call(per_order_remarks || {}, idKey)
+          ? per_order_remarks[idKey]
+          : (order.courier_remarks || default_remarks || order.default_courier_remarks || '')
+      ).trim();
+      const resolvedPickup = String(pickup_address_code || order.pickup_address_code || order.postex_pickup_code || '').trim();
+
+      const trackingNumber = await createPostExOrder(order, order, {
+        pickupAddressCode: resolvedPickup,
+        remarks: resolvedRemarks,
+      });
+      db.prepare(`
+        UPDATE orders
+        SET tracking_number = ?, courier = ?, delivery_status = 'Booked',
+            courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
+        WHERE id = ?
+      `).run(trackingNumber, 'PostEx', resolvedRemarks, resolvedPickup, id);
       try {
         const { allocateOrderFifoOnDispatch } = require('../../services/poLedgerService');
         allocateOrderFifoOnDispatch(id, req.user?.username || 'BulkPostEx');

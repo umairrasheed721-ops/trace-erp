@@ -156,6 +156,7 @@ function openPackingSlipPrint({ order, items, subtotal, discount, shippingFee, t
       </table>
     </div>
 
+    ${order.courier_remarks ? `<div class="note" style="background:#eef2ff;border-color:#818cf8;color:#1e1b4b;"><strong>📋 Courier Slip Remarks:</strong> ${escapeHtml(order.courier_remarks)}</div>` : ''}
     ${order.notes ? `<div class="note"><strong>Customer Note:</strong> ${escapeHtml(order.notes)}</div>` : ''}
   </div>
   <script>window.onload = function () { window.focus(); window.print(); };</script>

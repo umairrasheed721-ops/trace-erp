@@ -27,6 +27,8 @@ const STORE_SELECT_COLS = `
   leopards_token, tcs_token, google_maps_key, sync_start_date,
   sync_status, sync_progress, sync_total, sync_processed,
   postex_track_url, instaworld_track_url, gas_proxy_url,
+  postex_pickup_code, postex_pickup_label, postex_pickup_cache,
+  default_courier_remarks, instaworld_pickup_address,
   meta_ad_account_id,
   CASE WHEN meta_access_token IS NOT NULL AND meta_access_token != '' THEN 1 ELSE 0 END as has_meta_token,
   wa_phone_number_id, wa_webhook_verify_token,
@@ -180,6 +182,10 @@ router.put('/:id', (req, res) => {
       postex_track_url = ?,
       instaworld_track_url = ?,
       gas_proxy_url = ?,
+      postex_pickup_code = ?,
+      postex_pickup_label = ?,
+      default_courier_remarks = ?,
+      instaworld_pickup_address = ?,
       wa_phone_number_id = ?,
       wa_webhook_verify_token = ?,
       wa_access_token = ?
@@ -197,12 +203,97 @@ router.put('/:id', (req, res) => {
     pick('postex_track_url', current.postex_track_url),
     pick('instaworld_track_url', current.instaworld_track_url),
     pick('gas_proxy_url', current.gas_proxy_url),
+    b.postex_pickup_code !== undefined ? String(b.postex_pickup_code || '').trim() : (current.postex_pickup_code || ''),
+    b.postex_pickup_label !== undefined ? String(b.postex_pickup_label || '').trim() : (current.postex_pickup_label || ''),
+    b.default_courier_remarks !== undefined ? String(b.default_courier_remarks || '').trim() : (current.default_courier_remarks || ''),
+    b.instaworld_pickup_address !== undefined ? String(b.instaworld_pickup_address || '').trim() : (current.instaworld_pickup_address || ''),
     pick('wa_phone_number_id', current.wa_phone_number_id),
     pick('wa_webhook_verify_token', current.wa_webhook_verify_token),
     nextWaToken,
     req.params.id
   );
   res.json({ success: true });
+});
+
+// GET /api/stores/:id/pickup-locations - Fetch live PostEx pickup addresses (with DB cache fallback) + store defaults
+router.get('/:id/pickup-locations', async (req, res) => {
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(req.params.id);
+    if (!store) return res.status(404).json({ success: false, error: 'Store not found' });
+
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    let cachedLocations = [];
+    if (store.postex_pickup_cache) {
+      try {
+        const parsed = JSON.parse(store.postex_pickup_cache);
+        if (Array.isArray(parsed)) cachedLocations = parsed;
+      } catch (_) {}
+    }
+
+    let locations = cachedLocations;
+    let source = cachedLocations.length ? 'cache' : 'none';
+    let liveError = null;
+
+    if (store.postex_token && (forceRefresh || cachedLocations.length === 0)) {
+      try {
+        const { fetchPostExPickupAddresses } = require('../engines/postex');
+        const liveList = await fetchPostExPickupAddresses(store);
+        locations = liveList;
+        source = 'live';
+        db.prepare('UPDATE stores SET postex_pickup_cache = ? WHERE id = ?')
+          .run(JSON.stringify(liveList), store.id);
+      } catch (err) {
+        liveError = err.message;
+        console.warn(`⚠️ [PickupLocations] PostEx live fetch failed for store ${store.id}:`, err.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      source,
+      error: liveError,
+      locations,
+      default_pickup_code: store.postex_pickup_code || '',
+      default_pickup_label: store.postex_pickup_label || '',
+      default_courier_remarks: store.default_courier_remarks || '',
+      instaworld_pickup_address: store.instaworld_pickup_address || '',
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// PUT /api/stores/:id/pickup-defaults - Quick-save default pickup location & default courier remarks from Booking Modal / Settings
+router.put('/:id/pickup-defaults', (req, res) => {
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(req.params.id);
+    if (!store) return res.status(404).json({ success: false, error: 'Store not found' });
+
+    const b = req.body || {};
+    const nextCode = b.postex_pickup_code !== undefined ? String(b.postex_pickup_code || '').trim() : (store.postex_pickup_code || '');
+    const nextLabel = b.postex_pickup_label !== undefined ? String(b.postex_pickup_label || '').trim() : (store.postex_pickup_label || '');
+    const nextRemarks = b.default_courier_remarks !== undefined ? String(b.default_courier_remarks || '').trim() : (store.default_courier_remarks || '');
+    const nextInstaPickup = b.instaworld_pickup_address !== undefined ? String(b.instaworld_pickup_address || '').trim() : (store.instaworld_pickup_address || '');
+
+    db.prepare(`
+      UPDATE stores
+      SET postex_pickup_code = ?,
+          postex_pickup_label = ?,
+          default_courier_remarks = ?,
+          instaworld_pickup_address = ?
+      WHERE id = ?
+    `).run(nextCode, nextLabel, nextRemarks, nextInstaPickup, store.id);
+
+    res.json({
+      success: true,
+      postex_pickup_code: nextCode,
+      postex_pickup_label: nextLabel,
+      default_courier_remarks: nextRemarks,
+      instaworld_pickup_address: nextInstaPickup,
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 // GET /api/stores/:id/health - Live Shopify token, scopes, webhooks & theme audit (5s timeouts)

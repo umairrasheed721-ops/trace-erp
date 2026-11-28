@@ -3,14 +3,25 @@ const { instaworldBreaker } = require('./circuit_breaker');
 
 /**
  * Creates a booking in Instaworld (Supports TCS, LCS, etc.)
+ * Supports remarks / special_instructions and pickup_address override.
  */
-async function createInstaworldOrder(store, order, courierName = 'TCS', targetKey = null) {
+async function createInstaworldOrder(store, order, courierName = 'TCS', targetKey = null, options = {}) {
   return instaworldBreaker.execute(async () => {
     const apiKey = targetKey || store.instaworld_key;
     if (!apiKey) throw new Error('Instaworld API Key missing');
 
     // URL for one-be production
     const url = 'https://one-be.instaworld.pk/logistics/v1/bookOrder';
+
+    const rawRemarks = options.remarks !== undefined
+      ? options.remarks
+      : (order.courier_remarks || store.default_courier_remarks || '');
+    const remarks = String(rawRemarks || '').trim().slice(0, 250);
+    const pickupAddress = String(
+      options.pickupAddress !== undefined
+        ? options.pickupAddress
+        : (order.pickup_address_code || store.instaworld_pickup_address || '')
+    ).trim();
 
     const payload = {
       shipper_name: store.store_name || store.shop_domain,
@@ -20,12 +31,20 @@ async function createInstaworldOrder(store, order, courierName = 'TCS', targetKe
       consignee_city: (order.city || '').trim(),
       order_id: order.ref_number || String(order.shopify_order_id),
       cod_amount: parseFloat(order.price) || 0,
-      weight: order.postex_weight || 0.5,
-      pieces: order.items_count || 1,
+      weight: parseFloat(options.weight || order.postex_weight) || 0.5,
+      pieces: Math.max(1, parseInt(order.items_count, 10) || 1),
       description: order.product_titles || 'General Items',
       courier_name: courierName, // e.g. "TCS", "LCS", "Leopards"
       service_type: 'Overnight'
     };
+
+    if (remarks) {
+      payload.remarks = remarks;
+      payload.special_instructions = remarks;
+    }
+    if (pickupAddress) {
+      payload.pickup_address = pickupAddress;
+    }
 
     const response = await instaworldFetch(url, {
       method: 'POST',

@@ -212,7 +212,7 @@ export default function useOrderSave({
   }, [editingOrder, setEditingOrder, updateOrderField, notify]);
 
   // REAL synchronous single-order booking (PostEx / Instaworld 1-3) — enforces Zero-Cost, City & Prepaid COD=0
-  const handleBookCourier = useCallback(async (courierKey) => {
+  const handleBookCourier = useCallback(async (courierKey, bookingOverrides = {}) => {
     if (!editingOrder?.id) return;
     if (editingOrder.tracking_number) {
       notify(`⚠️ Already booked with tracking ${editingOrder.tracking_number}. Cancel booking first to re-book.`, 'warning');
@@ -232,9 +232,20 @@ export default function useOrderSave({
       : accountType === 'key3' ? 'Instaworld API 3'
       : courierKey;
 
+    const finalRemarks = bookingOverrides.remarks !== undefined
+      ? String(bookingOverrides.remarks || '').trim()
+      : String(editingOrder.courier_remarks || '').trim();
+    const finalPickup = bookingOverrides.pickupAddressCode !== undefined
+      ? String(bookingOverrides.pickupAddressCode || '').trim()
+      : String(editingOrder.pickup_address_code || '').trim();
+
     const isPrepaid = ['paid', 'partially_paid'].includes(String(editingOrder.payment_status || '').toLowerCase());
     const codLabel = isPrepaid ? 'Rs. 0 (Prepaid Order)' : `Rs. ${Math.round(liveTotal).toLocaleString()} COD`;
-    if (!window.confirm(`Book Order #${editingOrder.ref_number || editingOrder.id} with ${displayLabel}?\n\nCollectible: ${codLabel}\nCity: ${editingOrder.city || 'Missing'}`)) {
+    const extraInfo = [
+      finalPickup ? `Pickup: ${finalPickup}` : null,
+      finalRemarks ? `Slip Remarks: ${finalRemarks}` : null,
+    ].filter(Boolean).join('\n');
+    if (!window.confirm(`Book Order #${editingOrder.ref_number || editingOrder.id} with ${displayLabel}?\n\nCollectible: ${codLabel}\nCity: ${editingOrder.city || 'Missing'}${extraInfo ? `\n${extraInfo}` : ''}`)) {
       return;
     }
 
@@ -244,10 +255,14 @@ export default function useOrderSave({
         ? `${apiBase}/api/orders/${editingOrder.id}/book-instaworld`
         : `${apiBase}/api/orders/${editingOrder.id}/book-postex`;
 
+      const payload = isInsta
+        ? { account_type: accountType, pickup_address: finalPickup, remarks: finalRemarks }
+        : { pickup_address_code: finalPickup, remarks: finalRemarks };
+
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: getAuthHeaders(true),
-        body: JSON.stringify(isInsta ? { account_type: accountType } : {})
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
 
@@ -262,6 +277,8 @@ export default function useOrderSave({
         tracking_number: trackingNum,
         courier: isInsta ? 'Instaworld' : 'PostEx',
         delivery_status: 'Booked',
+        courier_remarks: finalRemarks,
+        pickup_address_code: finalPickup,
         shop_domain: editingOrder.shop_domain
       };
       setEditingOrder(merged);

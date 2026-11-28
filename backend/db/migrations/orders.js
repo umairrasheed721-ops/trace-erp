@@ -1487,6 +1487,40 @@ module.exports = [
     } catch (e) {
       console.error('Migration #53 failed:', e.message);
     }
+  },
+
+  // 54. Add Courier Pickup Location & Slip Remarks columns to stores and orders tables
+  (db) => {
+    try {
+      const storeCols = db.prepare('PRAGMA table_info(stores)').all().map(c => c.name);
+      const addStoreCols = [
+        ['postex_pickup_code', "TEXT DEFAULT ''"],
+        ['postex_pickup_label', "TEXT DEFAULT ''"],
+        ['postex_pickup_cache', "TEXT DEFAULT ''"],
+        ['default_courier_remarks', "TEXT DEFAULT ''"],
+        ['instaworld_pickup_address', "TEXT DEFAULT ''"],
+      ];
+      for (const [col, def] of addStoreCols) {
+        if (!storeCols.includes(col)) {
+          db.exec(`ALTER TABLE stores ADD COLUMN ${col} ${def}`);
+        }
+      }
+
+      const orderCols = db.prepare('PRAGMA table_info(orders)').all().map(c => c.name);
+      const addOrderCols = [
+        ['courier_remarks', "TEXT DEFAULT ''"],
+        ['pickup_address_code', "TEXT DEFAULT ''"],
+      ];
+      for (const [col, def] of addOrderCols) {
+        if (!orderCols.includes(col)) {
+          db.exec(`ALTER TABLE orders ADD COLUMN ${col} ${def}`);
+        }
+      }
+
+      console.log('✅ [Migration #54] Courier Pickup Location & Slip Remarks columns verified.');
+    } catch (e) {
+      console.error('Migration #54 failed:', e.message);
+    }
   }
 ];
 

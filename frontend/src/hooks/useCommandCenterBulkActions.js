@@ -28,6 +28,7 @@ export default function useCommandCenterBulkActions({
   colFilters,
   activeStoreId,
   fetchBacklogDates,
+  onOpenBookingModal,
 }) {
   const { addToast } = useApp()
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
@@ -262,7 +263,13 @@ export default function useCommandCenterBulkActions({
   const handleBulkBookPostEx = async () => {
     if (selectedIds.length === 0) return
 
-    const blocked = allOrders.filter(o => selectedIds.includes(o.id) && (!o.cost || parseFloat(o.cost) <= 0))
+    const selectedOrders = allOrders.filter(o => selectedIds.includes(o.id))
+    if (typeof onOpenBookingModal === 'function' && selectedOrders.length > 0) {
+      onOpenBookingModal({ courier: 'PostEx', orders: selectedOrders })
+      return
+    }
+
+    const blocked = selectedOrders.filter(o => !o.cost || parseFloat(o.cost) <= 0)
     if (blocked.length > 0) {
       addToast(`🛑 Blocked: ${blocked.length} orders have $0 cost. Heal them first.`, 'error')
       return
@@ -296,7 +303,13 @@ export default function useCommandCenterBulkActions({
   const handleBulkBookInstaworld = async (courier) => {
     if (selectedIds.length === 0) return
 
-    const blocked = allOrders.filter(o => selectedIds.includes(o.id) && (!o.cost || parseFloat(o.cost) <= 0))
+    const selectedOrders = allOrders.filter(o => selectedIds.includes(o.id))
+    if (typeof onOpenBookingModal === 'function' && selectedOrders.length > 0) {
+      onOpenBookingModal({ courier, orders: selectedOrders })
+      return
+    }
+
+    const blocked = selectedOrders.filter(o => !o.cost || parseFloat(o.cost) <= 0)
     if (blocked.length > 0) {
       addToast(`🛑 Blocked: ${blocked.length} orders have $0 cost. Heal them first.`, 'error')
       return

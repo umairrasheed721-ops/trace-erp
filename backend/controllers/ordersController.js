@@ -137,7 +137,7 @@ exports.csUpdate = async (req, res) => {
 
 exports.updateOrder = async (req, res) => {
   const { id } = req.params;
-  const allowed = ['delivery_status', 'payment_status', 'notes', 'paid_amount', 'payment_ref', 'courier_fee', 'shipping_fee', 'hold_reason', 'return_status', 'cost', 'customer_name', 'phone', 'city', 'address', 'address1', 'address2', 'province', 'zip', 'tracking_number', 'courier'];
+  const allowed = ['delivery_status', 'payment_status', 'notes', 'paid_amount', 'payment_ref', 'courier_fee', 'shipping_fee', 'hold_reason', 'return_status', 'cost', 'customer_name', 'phone', 'city', 'address', 'address1', 'address2', 'province', 'zip', 'tracking_number', 'courier', 'courier_remarks', 'pickup_address_code'];
   const updates = Object.keys(req.body).filter(k => allowed.includes(k));
   if (!updates.length) return res.status(400).json({ error: 'No valid fields to update' });
 
@@ -530,8 +530,14 @@ exports.bookPostex = async (req, res) => {
   const { fulfillShopifyOrder } = require('../engines/shopify');
   const { getBestMatch } = require('../engines/logistics');
 
+  const { pickup_address_code, remarks, weight } = req.body || {};
+
   try {
-    const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+    const order = db.prepare(`
+      SELECT o.*, s.shop_domain, s.access_token, s.postex_token,
+             s.postex_pickup_code, s.default_courier_remarks
+      FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?
+    `).get(req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (!order.cost || order.cost <= 0) {
       return res.status(400).json({ error: 'Zero Cost Block: Please heal cost before booking' });
@@ -547,16 +553,31 @@ exports.bookPostex = async (req, res) => {
     const matchedCity = getBestMatch(order.city, 'PostEx');
     if (matchedCity) order.city = matchedCity;
 
+    const resolvedPickup = String(
+      pickup_address_code !== undefined ? pickup_address_code : (order.pickup_address_code || order.postex_pickup_code || '')
+    ).trim();
+    const resolvedRemarks = String(
+      remarks !== undefined ? remarks : (order.courier_remarks || order.default_courier_remarks || '')
+    ).trim();
+
     // Prepaid Protection: Never charge COD on Paid orders
     const isPrepaid = ['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase());
     const bookingPayload = isPrepaid ? { ...order, price: 0, is_prepaid: true } : order;
 
-    // 1. Create booking in PostEx
-    const trackingNumber = await createPostExOrder(order, bookingPayload);
+    // 1. Create booking in PostEx (with Pickup Location & Slip Remarks)
+    const trackingNumber = await createPostExOrder(order, bookingPayload, {
+      pickupAddressCode: resolvedPickup,
+      remarks: resolvedRemarks,
+      weight,
+    });
 
-    // 2. Update local database
-    db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?")
-      .run(trackingNumber, 'PostEx', req.params.id);
+    // 2. Update local database (persist tracking, remarks & pickup code)
+    db.prepare(`
+      UPDATE orders
+      SET tracking_number = ?, courier = ?, delivery_status = 'Booked',
+          courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
+      WHERE id = ?
+    `).run(trackingNumber, 'PostEx', resolvedRemarks, resolvedPickup, req.params.id);
 
     // 2b. Autopilot FIFO batch consume & cost lock
     try {
@@ -591,10 +612,14 @@ exports.bookInstaworld = async (req, res) => {
   const { createInstaworldOrder } = require('../engines/instaworld');
   const { fulfillShopifyOrder } = require('../engines/shopify');
   const { getBestMatch } = require('../engines/logistics');
-  const { account_type } = req.body;
+  const { account_type, pickup_address, pickup_address_code, remarks, weight } = req.body || {};
 
   try {
-    const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.store_name, s.gas_proxy_url FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+    const order = db.prepare(`
+      SELECT o.*, s.shop_domain, s.access_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3,
+             s.store_name, s.gas_proxy_url, s.default_courier_remarks, s.instaworld_pickup_address
+      FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?
+    `).get(req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (!order.cost || order.cost <= 0) {
       return res.status(400).json({ error: 'Zero Cost Block: Please heal cost before booking' });
@@ -610,6 +635,15 @@ exports.bookInstaworld = async (req, res) => {
     const matchedCity = getBestMatch(order.city, 'Instaworld');
     if (matchedCity) order.city = matchedCity;
 
+    const resolvedPickup = String(
+      pickup_address !== undefined
+        ? pickup_address
+        : (pickup_address_code !== undefined ? pickup_address_code : (order.pickup_address_code || order.instaworld_pickup_address || ''))
+    ).trim();
+    const resolvedRemarks = String(
+      remarks !== undefined ? remarks : (order.courier_remarks || order.default_courier_remarks || '')
+    ).trim();
+
     // Prepaid Protection: Never charge COD on Paid orders
     const isPrepaid = ['paid', 'payment posted'].includes((order.payment_status || '').toLowerCase());
     const bookingPayload = isPrepaid ? { ...order, price: 0, is_prepaid: true } : order;
@@ -622,11 +656,19 @@ exports.bookInstaworld = async (req, res) => {
     }
 
     // 1. Create booking (default courier_name to TCS under the hood for API compatibility)
-    const trackingNumber = await createInstaworldOrder(order, bookingPayload, 'TCS', apiKey);
+    const trackingNumber = await createInstaworldOrder(order, bookingPayload, 'TCS', apiKey, {
+      pickupAddress: resolvedPickup,
+      remarks: resolvedRemarks,
+      weight,
+    });
 
-    // 2. Update local database
-    db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?")
-      .run(trackingNumber, 'Instaworld', req.params.id);
+    // 2. Update local database (persist tracking, remarks & pickup address)
+    db.prepare(`
+      UPDATE orders
+      SET tracking_number = ?, courier = ?, delivery_status = 'Booked',
+          courier_remarks = ?, pickup_address_code = ?, status_date = datetime('now')
+      WHERE id = ?
+    `).run(trackingNumber, 'Instaworld', resolvedRemarks, resolvedPickup, req.params.id);
 
     // 2b. Autopilot FIFO batch consume & cost lock
     try {

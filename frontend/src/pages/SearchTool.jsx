@@ -11,6 +11,7 @@ import CustomerHistoryModal from '../components/CustomerHistoryModal'
 import { SaveViewModal, ColumnPickerModal, AgingConfigModal, NameRulesModal } from '../components/Modals'
 import OrderHistoryModal from '../components/OrderHistoryModal'
 import ReadyTagCleanupModal from '../components/ReadyTagCleanupModal'
+import BookingDispatchModal from '../components/BookingDispatchModal'
 import ApiStatusBanner from '../components/ApiStatusBanner'
 import ErrorBoundary from '../components/ErrorBoundary'
 import CommandCenterHeader from '../components/CommandCenter/Layout/CommandCenterHeader'
@@ -34,9 +35,10 @@ function useDebounce(value, delay) {
 }
 
 export default function SearchTool() {
-  const { activeStoreId, addToast, user, isFocusMode, setSidebarCollapsed, token } = useApp()
+  const { activeStoreId, activeStore, setStores, addToast, user, isFocusMode, setSidebarCollapsed, token } = useApp()
   const [activeRowId, setActiveRowId] = useState(null)
   const [showReadyTagCleanup, setShowReadyTagCleanup] = useState(false)
+  const [bookingModalState, setBookingModalState] = useState({ show: false, courier: 'PostEx', orders: [] })
   const canSeeFinancials = user?.role === 'admin'
   const location = useLocation()
   const navigate = useNavigate()
@@ -546,6 +548,7 @@ export default function SearchTool() {
     colFilters,
     activeStoreId,
     fetchBacklogDates,
+    onOpenBookingModal: ({ courier, orders }) => setBookingModalState({ show: true, courier, orders }),
   })
 
   const handleConfirmOrder = useCallback(async (orderId) => {
@@ -781,106 +784,23 @@ export default function SearchTool() {
 
   const handleBookInstaworld = useCallback(async (orderId, accountType = 'primary') => {
     const order = allOrders.find(o => o.id === orderId)
-    if (order && (!order.cost || parseFloat(order.cost) <= 0)) {
+    if (!order) return
+    if (!order.cost || parseFloat(order.cost) <= 0) {
       addToast('🛑 Zero Cost Block: Heal cost before booking', 'error')
       return
     }
-    const label = accountType === 'backup' ? 'Instaworld API 2 (Backup)' : accountType === 'key3' ? 'Instaworld API 3 (Optional)' : 'Instaworld API 1 (Primary)';
-    const isPrepaid = ['paid', 'payment posted'].includes((order?.payment_status || '').toLowerCase())
-    setConfirmDialog({
-      isOpen: true,
-      icon: '🌐',
-      variant: 'primary',
-      confirmText: `Book via ${label.split(' ')[0]}`,
-      title: `Book Order ${order?.ref_number || `#${orderId}`}`,
-      message: `Dispatch this order via ${label} and auto-fulfill on Shopify?`,
-      details: order ? [
-        { label: 'Customer', value: order.customer_name || '—' },
-        { label: 'Delivery City', value: order.city || '⚠️ MISSING CITY', highlight: !order.city ? 'danger' : null },
-        { label: 'Payment Mode', value: isPrepaid ? '💳 PREPAID — COD Rs. 0' : `💵 COD — Rs. ${Number(order.price || 0).toLocaleString()}`, highlight: isPrepaid ? 'success' : null },
-        { label: 'Courier', value: label },
-      ] : [],
-      onConfirm: async () => {
-        setConfirmDialog(prev => ({ ...prev, isOpen: false }))
-        const previousOrders = [...allOrders];
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, courier: 'Instaworld', delivery_status: 'Booked' } : o))
-        setBookingId(orderId)
-        try {
-          const apiUrl = import.meta.env.VITE_API_URL || '';
-          const res = await fetch(`${apiUrl}/api/orders/${orderId}/book-instaworld`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ account_type: accountType })
-          })
-          const data = await res.json()
-          if (data.success) {
-            const msg = data.shopifyFulfilled === false
-              ? `✅ Booked (${data.tracking_number}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
-              : `✅ Booked! Tracking: ${data.tracking_number}${data.prepaid ? ' (Prepaid COD=0)' : ''}`
-            addToast(msg, data.shopifyFulfilled === false ? 'warning' : 'success')
-            setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'Instaworld', delivery_status: 'Booked' } : o))
-            fetchBacklogDates();
-          } else {
-            throw new Error(data.error || 'Booking rejected')
-          }
-        } catch (err) {
-          setAllOrders(previousOrders)
-          addToast(`❌ Booking Failed: ${err.message}`, 'error')
-        } finally {
-          setBookingId(null)
-        }
-      }
-    })
-  }, [allOrders, addToast, fetchBacklogDates, setConfirmDialog])
+    setBookingModalState({ show: true, courier: `insta:${accountType}`, orders: [order] })
+  }, [allOrders, addToast])
 
   const handleBookPostEx = useCallback(async (orderId) => {
     const order = allOrders.find(o => o.id === orderId)
-    if (order && (!order.cost || parseFloat(order.cost) <= 0)) {
+    if (!order) return
+    if (!order.cost || parseFloat(order.cost) <= 0) {
       addToast('🛑 Zero Cost Block: Heal cost before booking', 'error')
       return
     }
-    const isPrepaid = ['paid', 'payment posted'].includes((order?.payment_status || '').toLowerCase())
-    setConfirmDialog({
-      isOpen: true,
-      icon: '🚀',
-      variant: 'primary',
-      confirmText: 'Book via PostEx',
-      title: `PostEx Booking — ${order?.ref_number || `#${orderId}`}`,
-      message: 'Generate a real PostEx tracking number and auto-fulfill on Shopify?',
-      details: order ? [
-        { label: 'Customer', value: order.customer_name || '—' },
-        { label: 'Delivery City', value: order.city || '⚠️ MISSING CITY', highlight: !order.city ? 'danger' : null },
-        { label: 'Payment Mode', value: isPrepaid ? '💳 PREPAID — COD Rs. 0' : `💵 COD — Rs. ${Number(order.price || 0).toLocaleString()}`, highlight: isPrepaid ? 'success' : null },
-        { label: 'Courier', value: 'PostEx' },
-      ] : [],
-      onConfirm: async () => {
-        setConfirmDialog(prev => ({ ...prev, isOpen: false }))
-        const previousOrders = [...allOrders];
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, courier: 'PostEx', delivery_status: 'Booked' } : o))
-        setBookingId(orderId)
-        try {
-          const apiUrl = import.meta.env.VITE_API_URL || '';
-          const res = await fetch(`${apiUrl}/api/orders/${orderId}/book-postex`, { method: 'POST' })
-          const data = await res.json()
-          if (data.success) {
-            const msg = data.shopifyFulfilled === false
-              ? `✅ Booked (${data.tracking_number}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
-              : `✅ Booked! Tracking: ${data.tracking_number}${data.prepaid ? ' (Prepaid COD=0)' : ''}`
-            addToast(msg, data.shopifyFulfilled === false ? 'warning' : 'success')
-            setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'PostEx', delivery_status: 'Booked' } : o))
-            fetchBacklogDates();
-          } else {
-            throw new Error(data.error || 'Booking rejected')
-          }
-        } catch (err) {
-          setAllOrders(previousOrders)
-          addToast(`❌ Booking Failed: ${err.message}`, 'error')
-        } finally {
-          setBookingId(null)
-        }
-      }
-    })
-  }, [allOrders, addToast, fetchBacklogDates, setConfirmDialog])
+    setBookingModalState({ show: true, courier: 'PostEx', orders: [order] })
+  }, [allOrders, addToast])
 
   const toggleCompact = () => {
     setCompactMode(prev => {
@@ -2164,6 +2084,42 @@ export default function SearchTool() {
         onClose={() => setShowReadyTagCleanup(false)}
         onCleanupStarted={() => {
           setTimeout(() => fetchOrders({ isRefresh: true, wasProgrammatic: true }), 4000)
+        }}
+      />
+
+      <BookingDispatchModal
+        show={bookingModalState.show}
+        onClose={() => setBookingModalState(prev => ({ ...prev, show: false }))}
+        courier={bookingModalState.courier}
+        orders={bookingModalState.orders}
+        activeStore={activeStore}
+        addToast={addToast}
+        onStoreDefaultsSaved={(saved) => {
+          if (activeStore?.id && setStores) {
+            setStores(prev => prev.map(s => s.id === activeStore.id ? { ...s, ...saved } : s))
+          }
+        }}
+        onBookingSubmitted={({ mode, orderId, data, courier, remarks, pickupCode, ids }) => {
+          if (mode === 'single' && orderId && data) {
+            const msg = data.shopifyFulfilled === false
+              ? `✅ Booked (${data.tracking_number}) · ⚠️ Shopify fulfill failed: ${data.shopifyError || 'check scopes'}`
+              : `✅ Booked! Tracking: ${data.tracking_number}${data.prepaid ? ' (Prepaid COD=0)' : ''}`
+            addToast(msg, data.shopifyFulfilled === false ? 'warning' : 'success')
+            setAllOrders(prev => prev.map(o => o.id === orderId ? {
+              ...o,
+              tracking_number: data.tracking_number,
+              courier,
+              delivery_status: 'Booked',
+              courier_remarks: remarks ?? o.courier_remarks,
+              pickup_address_code: pickupCode ?? o.pickup_address_code,
+            } : o))
+            setSelectedIds(prev => prev.filter(x => x !== orderId))
+            fetchBacklogDates()
+          } else if (mode === 'bulk') {
+            addToast(`🚀 Background Booking Started for ${ids?.length || 0} orders! Check Topbar.`, 'info')
+            setSelectedIds([])
+            fetchBacklogDates()
+          }
         }}
       />
 

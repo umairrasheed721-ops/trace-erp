@@ -1,5 +1,13 @@
 import React from 'react';
 import { useApp } from '@context/AppContext';
+import {
+  COURIER_REMARK_PRESETS,
+  hasRemarkPhrase,
+  toggleRemarkPhrase,
+  appendRemarkPhrase,
+  detectSafeNoteHints,
+  formatPickupOptionLabel,
+} from '../utils/courierBookingPresets';
 
 const FINAL_LOCKED_STATUSES = ['delivered', 'returned', 'return received', 'cancelled'];
 
@@ -43,6 +51,77 @@ const CourierBooking = React.memo(({
   const [showCustomInput, setShowCustomInput] = React.useState(false);
   const [customCourier, setCustomCourier] = React.useState('');
   const [isSaving, setIsSaving] = React.useState(false);
+
+  // Pickup Location & Courier Slip Remarks state
+  const [pickupLocations, setPickupLocations] = React.useState([]);
+  const [pickupLoading, setPickupLoading] = React.useState(false);
+  const [localPickupCode, setLocalPickupCode] = React.useState('');
+  const [localRemarks, setLocalRemarks] = React.useState('');
+  const [savingDispatchMeta, setSavingDispatchMeta] = React.useState(false);
+
+  React.useEffect(() => {
+    setLocalRemarks(editingOrder?.courier_remarks || activeStore?.default_courier_remarks || '');
+    setLocalPickupCode(editingOrder?.pickup_address_code || activeStore?.postex_pickup_code || '');
+  }, [editingOrder?.id, editingOrder?.courier_remarks, editingOrder?.pickup_address_code, activeStore?.postex_pickup_code, activeStore?.default_courier_remarks]);
+
+  const fetchPickupLocations = React.useCallback(async (forceRefresh = false) => {
+    const targetStoreId = activeStore?.id || editingOrder?.store_id;
+    if (!targetStoreId) return;
+    setPickupLoading(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const token = localStorage.getItem('trace_token');
+      const res = await fetch(`${apiUrl}/api/stores/${targetStoreId}/pickup-locations${forceRefresh ? '?refresh=1' : ''}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setPickupLocations(Array.isArray(data.locations) ? data.locations : []);
+        if (!editingOrder?.pickup_address_code && data.default_pickup_code) {
+          setLocalPickupCode(data.default_pickup_code);
+        }
+      }
+    } catch (_) {}
+    finally { setPickupLoading(false); }
+  }, [activeStore?.id, editingOrder?.store_id, editingOrder?.pickup_address_code]);
+
+  React.useEffect(() => {
+    if (activeStore?.postex_token) {
+      fetchPickupLocations(false);
+    }
+  }, [activeStore?.id, activeStore?.postex_token]);
+
+  const handleSaveDispatchMeta = async () => {
+    if (!editingOrder?.id || !updateOrderField) return;
+    setSavingDispatchMeta(true);
+    try {
+      const trimmedRem = localRemarks.trim();
+      const trimmedPickup = localPickupCode.trim();
+      const updated = await updateOrderField(editingOrder.id, {
+        courier_remarks: trimmedRem,
+        pickup_address_code: trimmedPickup,
+      });
+      if (setEditingOrder) {
+        setEditingOrder(prev => ({
+          ...prev,
+          ...(updated || {}),
+          courier_remarks: trimmedRem,
+          pickup_address_code: trimmedPickup,
+          shop_domain: prev?.shop_domain,
+        }));
+      }
+      if (addToast) addToast('📋 Pickup location & courier slip remarks saved!', 'success', 2000);
+    } catch (err) {
+      if (addToast) addToast(`❌ Save failed: ${err.message}`, 'error');
+    } finally {
+      setSavingDispatchMeta(false);
+    }
+  };
+
+  const safeNoteHints = React.useMemo(
+    () => detectSafeNoteHints(editingOrder?.notes, localRemarks),
+    [editingOrder?.notes, localRemarks]
+  );
 
   const courierOptions = React.useMemo(() => {
     const list = [...standardCouriers];
@@ -311,6 +390,32 @@ const CourierBooking = React.memo(({
                 {trackingNumber} 📋
               </button>
 
+              {(editingOrder?.pickup_address_code || editingOrder?.courier_remarks) && (
+                <div style={{
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 9,
+                  padding: '8px 10px',
+                  fontSize: '0.74rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4,
+                }}>
+                  {editingOrder?.pickup_address_code && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>📍 Pickup Code: </span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 700, fontFamily: 'monospace' }}>{editingOrder.pickup_address_code}</span>
+                    </div>
+                  )}
+                  {editingOrder?.courier_remarks && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>📋 Slip Remarks: </span>
+                      <span style={{ color: '#6366f1', fontWeight: 700 }}>{editingOrder.courier_remarks}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {courierPortalUrl && (
                   <a
@@ -397,12 +502,142 @@ const CourierBooking = React.memo(({
                 </div>
               )}
 
+              {/* Pickup Location & Courier Slip Remarks (Saved per order & sent to PostEx/Instaworld slip) */}
+              <div style={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-bright)',
+                borderRadius: 11,
+                padding: '11px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 9,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                  <span style={{ fontSize: '0.73rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                    📍 Pickup & Slip Remarks
+                  </span>
+                  {hasPostex && (
+                    <button
+                      type="button"
+                      onClick={() => fetchPickupLocations(true)}
+                      disabled={pickupLoading}
+                      style={{
+                        fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 6,
+                        border: '1px solid var(--border)', background: 'var(--bg-surface)',
+                        color: 'var(--text-secondary)', cursor: 'pointer',
+                      }}
+                    >
+                      {pickupLoading ? '⏳...' : '🔄 Fetch Locations'}
+                    </button>
+                  )}
+                </div>
+
+                {hasPostex && (
+                  <div>
+                    <label className="eom-label" style={{ fontSize: '0.7rem' }}>PostEx Pickup Location</label>
+                    <select
+                      value={localPickupCode}
+                      onChange={(e) => setLocalPickupCode(e.target.value)}
+                      className="eom-select"
+                      style={{ fontSize: '0.78rem' }}
+                    >
+                      <option value="">— Store / PostEx Account Default —</option>
+                      {pickupLocations.map((loc) => (
+                        <option key={loc.addressCode || loc.address} value={loc.addressCode}>
+                          {formatPickupOptionLabel(loc)}
+                        </option>
+                      ))}
+                      {localPickupCode && !pickupLocations.some(l => l.addressCode === localPickupCode) && (
+                        <option value={localPickupCode}>Code: {localPickupCode}</option>
+                      )}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="eom-label" style={{ fontSize: '0.7rem' }}>Courier Slip Remarks (Printed on Airway Bill)</label>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                    {COURIER_REMARK_PRESETS.slice(0, 4).map((p) => {
+                      const active = hasRemarkPhrase(localRemarks, p.text);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setLocalRemarks(prev => toggleRemarkPhrase(prev, p.text))}
+                          style={{
+                            padding: '3px 7px',
+                            borderRadius: 999,
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            border: `1px solid ${active ? '#6366f1' : 'var(--border)'}`,
+                            background: active ? 'rgba(99,102,241,0.16)' : 'var(--bg-surface)',
+                            color: active ? '#6366f1' : 'var(--text-secondary)',
+                          }}
+                        >
+                          {active ? '✓ ' : '+ '}{p.shortLabel}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      type="text"
+                      value={localRemarks}
+                      onChange={(e) => setLocalRemarks(e.target.value)}
+                      placeholder="e.g. Call before delivery; Open parcel allowed"
+                      maxLength={250}
+                      className="eom-input"
+                      style={{ flex: 1, fontSize: '0.78rem' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveDispatchMeta}
+                      disabled={savingDispatchMeta}
+                      title="Save pickup & remarks on order (available during bulk booking too)"
+                      style={{
+                        padding: '0 10px',
+                        borderRadius: 8,
+                        border: '1px solid #6366f1',
+                        background: 'rgba(99,102,241,0.12)',
+                        color: '#6366f1',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {savingDispatchMeta ? '⏳' : '💾 Save'}
+                    </button>
+                  </div>
+                  {safeNoteHints.length > 0 && (
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 5, alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.68rem', color: '#d97706', fontWeight: 700 }}>💡 From Note:</span>
+                      {safeNoteHints.map(h => (
+                        <button
+                          key={h}
+                          type="button"
+                          onClick={() => setLocalRemarks(prev => appendRemarkPhrase(prev, h))}
+                          style={{
+                            padding: '2px 7px', borderRadius: 999, fontSize: '0.67rem', fontWeight: 700,
+                            border: '1px solid rgba(245,158,11,0.45)', background: 'rgba(245,158,11,0.12)',
+                            color: '#b45309', cursor: 'pointer',
+                          }}
+                        >
+                          + {h}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <label className="eom-label" style={{ marginBottom: 0 }}>Assign & Generate Tracking Number</label>
 
               {(hasPostex || !hasAnyCourierConfigured) && (
                 <button
                   type="button"
-                  onClick={() => handleBookCourier('PostEx')}
+                  onClick={() => handleBookCourier('PostEx', { pickupAddressCode: localPickupCode, remarks: localRemarks })}
                   disabled={bookingCourier}
                   style={{
                     background: 'var(--bg-elevated)', color: 'var(--text-primary)',
@@ -418,7 +653,7 @@ const CourierBooking = React.memo(({
               {hasInsta1 && (
                 <button
                   type="button"
-                  onClick={() => handleBookCourier('insta:primary')}
+                  onClick={() => handleBookCourier('insta:primary', { pickupAddressCode: localPickupCode, remarks: localRemarks })}
                   disabled={bookingCourier}
                   style={{
                     background: 'var(--bg-elevated)', color: 'var(--text-primary)',
@@ -434,7 +669,7 @@ const CourierBooking = React.memo(({
               {hasInsta2 && (
                 <button
                   type="button"
-                  onClick={() => handleBookCourier('insta:backup')}
+                  onClick={() => handleBookCourier('insta:backup', { pickupAddressCode: localPickupCode, remarks: localRemarks })}
                   disabled={bookingCourier}
                   style={{
                     background: 'var(--bg-elevated)', color: 'var(--text-primary)',
@@ -450,7 +685,7 @@ const CourierBooking = React.memo(({
               {hasInsta3 && (
                 <button
                   type="button"
-                  onClick={() => handleBookCourier('insta:key3')}
+                  onClick={() => handleBookCourier('insta:key3', { pickupAddressCode: localPickupCode, remarks: localRemarks })}
                   disabled={bookingCourier}
                   style={{
                     background: 'var(--bg-elevated)', color: 'var(--text-primary)',

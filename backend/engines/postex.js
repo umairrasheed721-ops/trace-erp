@@ -3,17 +3,61 @@ const { postexBreaker } = require('./circuit_breaker');
 const API_TIMEOUT = 15000;
 
 /**
- * Creates a real booking in PostEx
+ * Fetch registered merchant pickup locations from PostEx API
+ * GET https://api.postex.pk/services/integration/api/order/v1/get-pickup-address
  */
-async function createPostExOrder(store, order) {
+async function fetchPostExPickupAddresses(storeOrToken) {
+  const token = typeof storeOrToken === 'string' ? storeOrToken.trim() : String(storeOrToken?.postex_token || '').trim();
+  if (!token) throw new Error('PostEx Token missing for this store');
+
+  const url = 'https://api.postex.pk/services/integration/api/order/v1/get-pickup-address';
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { token },
+    timeout: 8000,
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || (String(data.statusCode) !== '200' && !Array.isArray(data.dist))) {
+    throw new Error(data.statusMessage || `PostEx returned HTTP ${response.status}`);
+  }
+
+  const rawList = Array.isArray(data.dist) ? data.dist : [];
+  return rawList
+    .map((item) => ({
+      addressCode: String(item.addressCode || item.pickupAddressCode || item.code || '').trim(),
+      address: String(item.address || '').trim(),
+      cityName: String(item.cityName || item.city || '').trim(),
+      contactPersonName: String(item.contactPersonName || item.contactName || '').trim(),
+      phone1: String(item.phone1 || item.phone || '').trim(),
+      phone2: String(item.phone2 || '').trim(),
+    }))
+    .filter((loc) => loc.addressCode || loc.address);
+}
+
+/**
+ * Creates a real booking in PostEx
+ * Supports pickupAddressCode (warehouse selector) & transactionNotes (courier slip remarks)
+ */
+async function createPostExOrder(store, order, options = {}) {
   return postexBreaker.execute(async () => {
     const { postex_token } = store;
     if (!postex_token) throw new Error('PostEx Token missing for this store');
 
     const url = 'https://api.postex.pk/services/integration/api/order/v1/create-order';
 
-    // Basic City Mapping (Simple for now, can be expanded)
     const city = (order.city || '').trim();
+    const pickupCode = String(
+      options.pickupAddressCode !== undefined
+        ? options.pickupAddressCode
+        : (order.pickup_address_code || store.postex_pickup_code || '')
+    ).trim();
+
+    const rawRemarks = options.remarks !== undefined
+      ? options.remarks
+      : (order.courier_remarks || store.default_courier_remarks || '');
+    const transactionNotes = String(rawRemarks || '').trim().slice(0, 250);
+    const itemsQty = Math.max(1, parseInt(order.items_count, 10) || 1);
 
     const payload = {
       customerName: order.customer_name,
@@ -24,9 +68,17 @@ async function createPostExOrder(store, order) {
       orderRefNumber: order.ref_number || String(order.shopify_order_id),
       invoicePayment: parseFloat(order.price) || 0,
       orderType: 'COD', // Default to Cash on Delivery
-      itemsCount: order.items_count || 1,
-      weight: order.postex_weight || 0.5
+      items: itemsQty,
+      itemsCount: itemsQty,
+      weight: parseFloat(options.weight || order.postex_weight) || 0.5
     };
+
+    if (pickupCode) {
+      payload.pickupAddressCode = pickupCode;
+    }
+    if (transactionNotes) {
+      payload.transactionNotes = transactionNotes;
+    }
 
     const response = await fetch(url, {
       method: 'POST',
@@ -109,4 +161,4 @@ async function cancelPostExOrder(store, trackingNumber) {
   });
 }
 
-module.exports = { createPostExOrder, fetchPostExCities, cancelPostExOrder };
+module.exports = { createPostExOrder, fetchPostExCities, cancelPostExOrder, fetchPostExPickupAddresses };
